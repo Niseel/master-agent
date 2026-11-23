@@ -1,0 +1,8 @@
+{
+  "name": "@agenthub/cli",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@agenthub/core": "workspace:*"
+  }
+}

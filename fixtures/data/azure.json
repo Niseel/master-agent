@@ -1,0 +1,17 @@
+{
+  "alerts": [
+    {
+      "id": "a1",
+      "name": "orders-api 5xx > 2%",
+      "severity": "Sev1",
+      "state": "Fired",
+      "firedAt": "2026-11-23T03:20:00Z",
+      "resource": "orders-api (App Service)",
+      "link": "https://portal.azure.com/#alert/a1"
+    }
+  ],
+  "logs": [
+    { "time": "2026-11-23T03:18:00Z", "level": "Error", "message": "Timeout calling payment-gateway after 30s", "count": 214 },
+    { "time": "2026-11-23T04:02:00Z", "level": "Warning", "message": "Retry storm detected on queue orders-events", "count": 37 }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@agenthub/core",
+  "private": true,
+  "type": "module",
+  "exports": { "./*": "./src/*.ts" },
+  "dependencies": {
+    "@github/copilot-sdk": "1.0.34",
+    "zod": "^4.6.7"
+  }
+}

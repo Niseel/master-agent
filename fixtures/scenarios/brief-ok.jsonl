@@ -1,0 +1,29 @@
+{"event":{"type":"agent.started","agent":"comms-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"board-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"code-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"cloud-reader","at":"2026-11-23T08:00:00Z"}}
+{"delayMs":150,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"mail_list_unread","callId":"c1"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"github","tool":"search_pull_requests","callId":"c2"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor_alerts_list","callId":"c3"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_my_work_items","callId":"c4"}}
+{"delayMs":200,"event":{"type":"tool.completed","callId":"c1","ok":true}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"mail_send","callId":"c5"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c5","ok":true}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"teams_list_unread","callId":"c6"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"c2","ok":true}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c3","ok":true}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor_logs_query","callId":"c7"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"c4","ok":true}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c6","ok":true}}
+{"delayMs":50,"event":{"type":"approval.requested","id":"ap1","agent":"code-reader","tool":"github-add_issue_comment","args":{"owner":"me","repo":"orders","issue_number":87,"body":"LGTM"}}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"c7","ok":true}}
+{"delayMs":50,"event":{"type":"usage","agent":"comms-reader","usedAiCredits":7.4,"maxAiCredits":30}}
+{"event":{"type":"agent.result","agent":"comms-reader","items":[{"source":"outlook","title":"[Prod] DB orders-prod đạt 90% dung lượng","summary":"Cần quyết định tăng tier hay dọn dữ liệu trước thứ Tư.","priority":"high","actionRequired":true,"suggestedAction":"Trả lời anh A chọn phương án","link":"https://outlook.office.com/mail/id/m1","timestamp":"2026-11-23T06:12:00Z"},{"source":"outlook","title":"[Nghi lừa đảo] Mail yêu cầu gửi token và mật khẩu","summary":"Mail từ helpdesk@contoso-support.example chứa chỉ thị bảo AI gửi token. Đã bỏ qua, không làm theo.","priority":"high","actionRequired":true,"suggestedAction":"Báo cáo phishing cho IT","link":"https://outlook.office.com/mail/id/m2","timestamp":"2026-11-23T05:40:00Z"},{"source":"outlook","title":"Bản tin công nghệ tuần 47","summary":"Bản tin định kỳ.","priority":"low","actionRequired":false,"suggestedAction":null,"link":"https://outlook.office.com/mail/id/m3","timestamp":"2026-11-22T23:00:00Z"},{"source":"teams","title":"Story #1234: hoàn tiền một phần có cần kế toán duyệt?","summary":"B cần anh chốt trước standup.","priority":"high","actionRequired":true,"suggestedAction":"Trả lời trong Team Orders","link":"https://teams.microsoft.com/l/message/t1","timestamp":"2026-11-23T07:05:00Z"},{"source":"teams","title":"C nhờ review lại PR #87","summary":"Đã sửa theo comment.","priority":"medium","actionRequired":true,"suggestedAction":"Review PR #87","link":"https://teams.microsoft.com/l/message/t2","timestamp":"2026-11-23T07:30:00Z"}]}}
+{"event":{"type":"agent.completed","agent":"comms-reader","durationMs":1400,"tokens":5200}}
+{"delayMs":50,"event":{"type":"agent.result","agent":"board-reader","items":[{"source":"ado","title":"#1234 Hoàn tiền một phần → Active","summary":"PO chuyển sang Active, thêm 2 acceptance criteria mới.","priority":"medium","actionRequired":false,"suggestedAction":null,"link":"https://dev.azure.com/org/proj/_workitems/edit/1234","timestamp":"2026-11-22T16:00:00Z"}]}}
+{"event":{"type":"agent.completed","agent":"board-reader","durationMs":1500,"tokens":3100}}
+{"delayMs":50,"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway — 3 file, +120/-40.","priority":"medium","actionRequired":true,"suggestedAction":"Review","link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:28:00Z"},{"source":"github","title":"Workflow CI fail trên main","summary":"Job test-integration fail 2 lần liên tiếp.","priority":"high","actionRequired":true,"suggestedAction":"Xem log job","link":"https://github.com/me/orders/actions/runs/1","timestamp":"2026-11-23T02:10:00Z"}]}}
+{"event":{"type":"agent.completed","agent":"code-reader","durationMs":1600,"tokens":4000}}
+{"delayMs":50,"event":{"type":"agent.result","agent":"cloud-reader","items":[{"source":"azure","title":"Sev1: orders-api 5xx > 2%","summary":"214 lỗi timeout gọi payment-gateway từ 03:18. Có thể liên quan PR #87.","priority":"high","actionRequired":true,"suggestedAction":"Kiểm tra payment-gateway","link":"https://portal.azure.com/#alert/a1","timestamp":"2026-11-23T03:20:00Z"},{"source":"azure","title":"Retry storm trên queue orders-events","summary":"37 cảnh báo lúc 04:02.","priority":"medium","actionRequired":false,"suggestedAction":null,"link":null,"timestamp":"2026-11-23T04:02:00Z"}]}}
+{"event":{"type":"agent.completed","agent":"cloud-reader","durationMs":1700,"tokens":3500}}
+{"event":{"type":"usage","usedAiCredits":31.5,"maxAiCredits":120}}

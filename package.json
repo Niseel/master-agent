@@ -1,0 +1,24 @@
+{
+  "name": "agent-hub",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "brief": "tsx apps/cli/src/brief.ts",
+    "smoke": "tsx scripts/sdk-smoke.ts",
+    "list-tools": "tsx scripts/list-tools.ts",
+    "test": "node --import tsx --test \"packages/*/test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "1.0.34"
+  }
+}
