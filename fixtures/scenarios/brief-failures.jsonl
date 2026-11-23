@@ -3,7 +3,7 @@
 {"event":{"type":"agent.started","agent":"code-reader","at":"2026-11-23T08:00:00Z"}}
 {"event":{"type":"agent.started","agent":"cloud-reader","at":"2026-11-23T08:00:00Z"}}
 {"delayMs":100,"event":{"type":"agent.failed","agent":"comms-reader","error":"MCP server workiq: AADSTS65001 The user or administrator has not consented to use the application."}}
-{"delayMs":100,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_my_work_items","callId":"f1"}}
+{"delayMs":100,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"f1"}}
 {"delayMs":200,"event":{"type":"tool.completed","callId":"f1","ok":false}}
 {"event":{"type":"agent.failed","agent":"board-reader","error":"Timeout after 150000ms waiting for session.idle"}}
 {"delayMs":100,"event":{"type":"usage","agent":"code-reader","usedAiCredits":30,"maxAiCredits":30}}

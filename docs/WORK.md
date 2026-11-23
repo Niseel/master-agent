@@ -19,7 +19,7 @@ cd master-agent
 node -v                 # cần ^20.19 hoặc >=22.12
 corepack enable         # nếu bị chặn quyền: dùng "corepack pnpm" thay cho "pnpm" ở mọi lệnh
 pnpm install
-pnpm test               # phải xanh 13/13 (không gọi dịch vụ thật)
+pnpm test               # phải xanh (không gọi dịch vụ thật)
 pnpm brief              # runtime mock → mở reports/brief-<ngày>.html
 copy .env.example .env  # rồi sửa .env
 ```
@@ -65,8 +65,20 @@ Ghi chú theo từng server:
 - **Azure MCP**: cờ `--namespace monitor --read-only` lấy theo docs cũ. Nếu `@azure/mcp` báo cờ
   không hợp lệ, xem `npx -y @azure/mcp@latest server start --help` và sửa `args` trong
   `packages/core/src/agents.ts` (agent `cloud-reader`).
-- **ADO**: URL `https://mcp.dev.azure.com/<org>` + header `X-MCP-Readonly: true`. Nếu cần auth khác,
-  ghi lại thông báo lỗi.
+- **ADO**: URL `https://mcp.dev.azure.com/<org>` + header `X-MCP-Readonly: true`. Auth do
+  `mcpAuth` (trong `packages/core/src/runtime/sdk.ts`) lấy token từ `az`, nên cần `az login` bằng tài
+  khoản **là thành viên org ADO**. Lỗi `VS30063` = identity của `az` không thuộc org.
+  Remote ADO MCP chỉ nhận token Entra, không nhận PAT. Nếu tài khoản ADO khác tài khoản Azure, dùng
+  profile `az` riêng cho ADO (profile mặc định giữ nguyên cho `cloud-reader`):
+
+  ```powershell
+  $env:AZURE_CONFIG_DIR = "$HOME\.azure-ado"; az login --allow-no-subscriptions; Remove-Item Env:AZURE_CONFIG_DIR
+  ```
+
+  Rồi thêm `ADO_AZURE_CONFIG_DIR=<đường dẫn tuyệt đối tới .azure-ado>` vào `.env`. Tenant ADO khác
+  tenant mặc định thì thêm `--tenant <tenant>` vào `az login`.
+- **Work IQ**: nếu tool trả về thông báo EULA, tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal
+  (agent không được phép gọi `accept_eula`).
 - **Windows + npx**: agent dùng `cmd /c npx ...`. Nếu vẫn lỗi spawn, ghi lại thông báo lỗi.
 
 ## 4. Lấy tên tool thật → allowlist

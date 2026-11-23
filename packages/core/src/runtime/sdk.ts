@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import {
   CopilotClient,
   type CopilotSession,
   type PermissionRequest,
   type PermissionRequestResult,
+  type SessionConfig,
   type SessionHooks,
 } from "@github/copilot-sdk";
 import type { AgentSpec } from "../agents.ts";
@@ -17,6 +21,53 @@ type PreToolUseHookOutput = Exclude<Awaited<ReturnType<NonNullable<SessionHooks[
 /** Found at Home 2026-11-23: "Minimum session limit is 30 AI credits." */
 export const MIN_SESSION_CREDITS = 30;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Remote MCP servers that sign in with Entra ID, mapped to the only scope we hand them.
+ * Found at Work: ADO MCP answers 401 + needs-auth; scope from its /.well-known/oauth-protected-resource.
+ * Remote ADO MCP accepts Entra tokens only (no PAT). configDirEnv names an optional separate
+ * `az` profile, for when the ADO account differs from the Azure account.
+ */
+const ENTRA_MCP: Record<string, { scope: string; configDirEnv: string }> = {
+  "https://mcp.dev.azure.com": { scope: "https://mcp.dev.azure.com/.default", configDirEnv: "ADO_AZURE_CONFIG_DIR" },
+};
+
+/**
+ * onMcpAuthRequest: get a token from the logged-in `az` CLI. Unlisted servers are cancelled,
+ * so no MCP server can obtain a token for another resource.
+ */
+export const mcpAuth: NonNullable<SessionConfig["onMcpAuthRequest"]> = async (req) => {
+  const srv = ENTRA_MCP[new URL(req.serverUrl).origin];
+  if (!srv) return { kind: "cancelled" };
+  const args = ["account", "get-access-token", "--scope", srv.scope, "--query", "accessToken", "-o", "tsv"];
+  // az is a .cmd shim on Windows; args are constants, so cmd /c is safe.
+  const [cmd, argv]: [string, string[]] = process.platform === "win32" ? ["cmd", ["/c", "az", ...args]] : ["az", args];
+  const configDir = process.env[srv.configDirEnv];
+  const env = configDir ? { ...process.env, AZURE_CONFIG_DIR: configDir } : process.env;
+  try {
+    const { stdout } = await promisify(execFile)(cmd, argv, { timeout: 60_000, env });
+    return stdout.trim() ? { kind: "token", accessToken: stdout.trim() } : { kind: "cancelled" };
+  } catch {
+    return { kind: "cancelled" };
+  }
+};
+
+/**
+ * Found at Work: the first turn can start before an OAuth server (ADO) connects, so the model only
+ * sees the built-in tools and ends. Wait (bounded) until none of the agent's servers is still connecting.
+ */
+export async function waitForMcp(s: CopilotSession, names: string[], ms = 60_000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const { servers } = await s.rpc.mcp.list();
+    const connecting = names.some((n) => {
+      const st = servers.find((x) => x.name === n)?.status;
+      return !st || st === "pending" || st === "needs-auth";
+    });
+    if (!connecting || Date.now() > end) return;
+    await sleep(1000);
+  }
+}
 
 /**
  * Real Copilot SDK runtime. Used for both:
@@ -76,6 +127,7 @@ export class SdkRuntime implements AgentRuntime {
         sessionLimits: { maxAiCredits: budget },
         hooks: { onPreToolUse: (h) => this.gate(a, h.toolName, h.toolArgs, h.toolCallId, q) },
         onPermissionRequest: (req) => this.permission(a, req),
+        onMcpAuthRequest: mcpAuth,
       });
       this.sessions.add(session);
       const s = session;
@@ -86,6 +138,7 @@ export class SdkRuntime implements AgentRuntime {
         // Budget hit: stop this agent. Never raise the limit automatically (PLAN §5.8).
         if (ev.type === "session_limits_exhausted.requested") void s.abort();
       });
+      await waitForMcp(s, Object.keys(a.mcpServers));
       const result = await s.sendAndWait({ prompt: `${input.prompt}\n\n${a.task}` }, AgentResult, this.cfg.timeoutMs);
       q.push({ type: "agent.result", agent: a.name, items: result.items });
       q.push({ type: "agent.completed", agent: a.name, durationMs: Date.now() - t0 });

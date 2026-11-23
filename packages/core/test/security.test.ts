@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
-import type { AgentSpec } from "../src/agents.ts";
+import { readerAgents, type AgentSpec } from "../src/agents.ts";
+import { loadConfig } from "../src/config.ts";
+import { mcpAuth } from "../src/runtime/sdk.ts";
 import { decide, looksLikeWrite, redact } from "../src/security.ts";
+
+const root = path.resolve(import.meta.dirname, "../../..");
 
 const reader: AgentSpec = {
   name: "comms-reader",
@@ -33,6 +38,30 @@ test("reader: explicit allowlist wins over heuristic", () => {
   const a = { ...reader, readTools: ["workiq-mail_list_unread"] };
   assert.equal(decide(a, "workiq-mail_list_unread").decision, "allow");
   assert.equal(decide(a, "workiq-teams_list_unread").decision, "deny");
+});
+
+test("copilot allowlists: built-in and write/state tools are denied", async () => {
+  const cfg = { ...(await loadConfig(root)), runtime: "copilot" as const, ado: { org: "o", project: "p" } };
+  const agent = (n: string) => readerAgents(cfg).find((a) => a.name === n)!;
+  const cases: [string, string, "allow" | "deny"][] = [
+    ["code-reader", "github-search_pull_requests", "allow"],
+    ["code-reader", "github-mcp-server-list_copilot_spaces", "deny"],
+    ["code-reader", "github-run_secret_scanning", "deny"],
+    ["code-reader", "github-get_copilot_job_status", "deny"],
+    ["comms-reader", "workiq-retrieve", "allow"],
+    ["comms-reader", "workiq-do_action", "deny"],
+    ["comms-reader", "workiq-accept_eula", "deny"],
+    ["comms-reader", "workiq-create_entity", "deny"],
+    ["board-reader", "ado-wit_query", "allow"],
+    ["board-reader", "github-mcp-server-get_me", "deny"],
+  ];
+  for (const [n, t, want] of cases) assert.equal(decide(agent(n), t).decision, want, `${n} ${t}`);
+});
+
+test("mcpAuth only hands out tokens for known origins", async () => {
+  const req = { serverName: "x", serverUrl: "https://example.com/mcp" } as Parameters<typeof mcpAuth>[0];
+  const r = await mcpAuth(req, { sessionId: "s" });
+  assert.deepEqual(r, { kind: "cancelled" });
 });
 
 test("writer: every own tool needs approval", () => {

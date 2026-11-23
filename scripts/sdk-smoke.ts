@@ -8,7 +8,7 @@
 import { CopilotClient } from "@github/copilot-sdk";
 import { readerAgents } from "../packages/core/src/agents.ts";
 import { loadConfig } from "../packages/core/src/config.ts";
-import { MIN_SESSION_CREDITS } from "../packages/core/src/runtime/sdk.ts";
+import { MIN_SESSION_CREDITS, mcpAuth, waitForMcp } from "../packages/core/src/runtime/sdk.ts";
 import { decide } from "../packages/core/src/security.ts";
 
 try {
@@ -50,6 +50,7 @@ const session = await client.createSession({
     const { decision, reason } = decide(agent, `${req.serverName}-${req.toolName}`);
     return decision === "allow" ? { kind: "approve-once" } : { kind: "reject", feedback: reason };
   },
+  onMcpAuthRequest: mcpAuth,
 });
 
 session.on((ev) => {
@@ -57,6 +58,7 @@ session.on((ev) => {
   console.log(`[${ev.type}]`, JSON.stringify(ev.data).slice(0, 300));
 });
 
+await waitForMcp(session, Object.keys(agent.mcpServers));
 const reply = await session.sendAndWait(
   { prompt: "Liệt kê tên các tool bạn có, rồi gọi thử MỘT tool đọc và tóm tắt kết quả trong 3 dòng." },
   180_000,

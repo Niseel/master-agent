@@ -10,6 +10,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { CopilotClient } from "@github/copilot-sdk";
 import { readerAgents } from "../packages/core/src/agents.ts";
 import { loadConfig } from "../packages/core/src/config.ts";
+import { mcpAuth } from "../packages/core/src/runtime/sdk.ts";
 import { looksLikeWrite } from "../packages/core/src/security.ts";
 
 try {
@@ -28,6 +29,7 @@ const session = await client.createSession({
   availableTools: ["mcp:*"],
   skipCustomInstructions: true,
   onPermissionRequest: () => ({ kind: "reject", feedback: "list-tools không gọi tool" }),
+  onMcpAuthRequest: mcpAuth,
 });
 
 // Wait until no server is still pending (max 90s).

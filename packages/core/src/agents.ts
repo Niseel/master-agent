@@ -19,7 +19,7 @@ export interface AgentSpec {
   /**
    * Allowlist of runtime tool names (`<key>-<tool>`).
    * "*" = any tool of the agent's own servers that does not look like a write.
-   * ponytail: "*" is the pre-Step-0 fallback; replace with exact names from docs/mcp-tools.md.
+   * ponytail: "*" only where real names are not verified yet (cloud-reader); see docs/mcp-tools.md.
    */
   readTools: string[] | "*";
   model?: string;
@@ -38,6 +38,26 @@ const OUTPUT_RULE =
   "actionRequired = true khi người dùng cần duyệt/trả lời/sửa gì đó.";
 
 const prompt = (role: string) => `${role}\n\n${UNTRUSTED_RULE}\n\n${OUTPUT_RULE}`;
+
+/**
+ * Read allowlists from Step 0 (docs/mcp-tools.md, runtime=copilot), limited to what the brief task needs.
+ * Left out on purpose — workiq: do_action/create_entity/update_entity/delete_entity (writes), accept_eula
+ * (changes state), call_function/fetch_blob/list_agents (not needed). github: run_secret_scanning, ui_get,
+ * get_copilot_job_status, people/team tools. The SDK's built-in `github-mcp-server-*` tools share the
+ * "github-" prefix, so only an explicit list keeps them away from code-reader.
+ */
+const only = (server: string, tools: string[]) => tools.map((t) => `${server}-${t}`);
+const WORKIQ_READ = only("workiq", ["retrieve", "ask", "fetch", "search_paths", "get_schema"]);
+/** ponytail: mock-mcp still uses its own names; drop once it mirrors the real Work IQ tools. */
+const WORKIQ_MOCK_READ = only("workiq", ["mail_list_unread", "teams_list_unread"]);
+const ADO_READ = only("ado", [
+  "wit_work_item", "wit_query", "search_workitem", "wit_backlog", "work", "core_list_projects", "core_list_project_teams",
+]);
+const GITHUB_READ = only("github", [
+  "get_me", "search_pull_requests", "list_pull_requests", "pull_request_read", "search_issues", "list_issues",
+  "issue_read", "actions_list", "actions_get", "get_job_logs", "list_commits", "get_commit", "get_file_contents",
+  "search_repositories", "list_branches",
+]);
 
 /** `npx <args>` as a stdio command. On Windows npx is a .cmd shim, so go through cmd /c. */
 const npx = (args: string[]) =>
@@ -74,7 +94,7 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
           ? { type: "stdio", ...npx(["-y", "@microsoft/workiq", "mcp"]), tools: ["*"], timeout: 60_000 }
           : mockServer(cfg, "workiq"),
       },
-      readTools: "*",
+      readTools: real ? WORKIQ_READ : WORKIQ_MOCK_READ,
     },
     {
       name: "board-reader",
@@ -93,7 +113,7 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
           timeout: 60_000,
         },
       },
-      readTools: "*",
+      readTools: ADO_READ,
       missingConfig:
         cfg.runtime !== "mock" && !(cfg.ado.org && cfg.ado.project) ? "Chưa cấu hình ADO_ORG / ADO_PROJECT" : undefined,
     },
@@ -114,7 +134,7 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
           timeout: 60_000,
         },
       },
-      readTools: "*",
+      readTools: GITHUB_READ,
     },
     {
       name: "cloud-reader",
