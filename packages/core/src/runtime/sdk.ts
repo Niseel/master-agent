@@ -55,17 +55,18 @@ export const mcpAuth: NonNullable<SessionConfig["onMcpAuthRequest"]> = async (re
 /**
  * Found at Work: the first turn can start before an OAuth server (ADO) connects, so the model only
  * sees the built-in tools and ends. Wait (bounded) until none of the agent's servers is still connecting.
+ * Returns the names still connecting when time ran out ([] = all settled).
  */
-export async function waitForMcp(s: CopilotSession, names: string[], ms = 60_000) {
+export async function waitForMcp(s: Pick<CopilotSession, "rpc">, names: string[], ms = 60_000, pollMs = 1000) {
   const end = Date.now() + ms;
   for (;;) {
     const { servers } = await s.rpc.mcp.list();
-    const connecting = names.some((n) => {
+    const connecting = names.filter((n) => {
       const st = servers.find((x) => x.name === n)?.status;
       return !st || st === "pending" || st === "needs-auth";
     });
-    if (!connecting || Date.now() > end) return;
-    await sleep(1000);
+    if (!connecting.length || Date.now() > end) return connecting;
+    await sleep(pollMs);
   }
 }
 
@@ -138,7 +139,8 @@ export class SdkRuntime implements AgentRuntime {
         // Budget hit: stop this agent. Never raise the limit automatically (PLAN §5.8).
         if (ev.type === "session_limits_exhausted.requested") void s.abort();
       });
-      await waitForMcp(s, Object.keys(a.mcpServers));
+      const stuck = await waitForMcp(s, Object.keys(a.mcpServers));
+      if (stuck.length) q.push({ type: "message", agent: a.name, text: `MCP chưa kết nối sau 60s: ${stuck.join(", ")}` });
       const result = await s.sendAndWait({ prompt: `${input.prompt}\n\n${a.task}` }, AgentResult, this.cfg.timeoutMs);
       q.push({ type: "agent.result", agent: a.name, items: result.items });
       q.push({ type: "agent.completed", agent: a.name, durationMs: Date.now() - t0 });
@@ -162,6 +164,7 @@ export class SdkRuntime implements AgentRuntime {
   ): Promise<PreToolUseHookOutput> {
     const { decision, reason } = decide(a, tool);
     audit(this.cfg.root, { agent: a.name, tool, args, decision, reason });
+    if (decision === "deny") q.push({ type: "message", agent: a.name, text: `Bị chặn: ${reason}` });
     if (decision !== "ask") return { permissionDecision: decision, permissionDecisionReason: reason };
 
     const id = callId ?? randomUUID();

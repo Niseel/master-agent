@@ -94,13 +94,24 @@ server kết nối được, kèm cột "Loại (đoán)". Sau đó:
 2. Trong `packages/core/src/agents.ts`, thay `readTools: "*"` của từng agent bằng danh sách tên
    `read` (dạng `<server>-<tool>`, ví dụ `"github-list_pull_requests"`). Có thể nhờ Copilot agent mode
    làm việc này (xem [AGENTS.md](../AGENTS.md)).
-3. `pnpm test` phải vẫn xanh.
+3. `pnpm test` phải vẫn xanh. Test `packages/mock-mcp/test/server.test.ts` kiểm tra mọi tên trong
+   allowlist có trong mock MCP: thêm tool mới vào allowlist thì báo về Home (work-feedback.md) để thêm
+   vào mock, hoặc tự thêm vào `packages/mock-mcp/src/server.ts`.
+
+**Input schema của tool:** SDK không trả schema (`rpc.mcp.listTools` chỉ có `name`, `description`).
+Mock đang đoán tên tham số và giá trị `action`. Sau một lần `pnpm smoke`/`pnpm brief` thật, xem trường
+`args` trong `logs/audit-<ngày>.jsonl` (đã lược secret) và ghi **tên tham số + giá trị `action`** (không
+chép giá trị dữ liệu như id, tên, query có tên người) vào `docs/work-feedback.md`.
 
 ## 5. Chạy thật
 
 ```powershell
 pnpm brief
 ```
+
+Báo cáo có mục "Không lấy được" kèm gợi ý cho lỗi đã biết (EULA Work IQ, `VS30063`, `AADSTS65001`,
+hết ngân sách) và mục "Đã chặn" liệt kê tool gate đã từ chối (ví dụ built-in `github-mcp-server-*`).
+Nếu một server OAuth chưa kết nối sau 60s, console in `MCP chưa kết nối sau 60s: <server>`.
 
 **Tiêu chí xong Phase 1:** báo cáo đúng, < 3 phút, credit nằm trong ngân sách
 (`AGENTHUB_MAX_AI_CREDITS`), trong `logs/audit-<ngày>.jsonl` không có tool ghi nào `allow`.

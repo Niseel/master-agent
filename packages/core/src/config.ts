@@ -42,7 +42,7 @@ export async function loadConfig(root = findRoot()): Promise<HubConfig> {
       org: env.ADO_ORG ?? user.ado?.org ?? "",
       project: env.ADO_PROJECT ?? user.ado?.project ?? "",
     },
-    github: { repos: env.GITHUB_REPOS?.split(",").filter(Boolean) ?? user.github?.repos ?? [] },
+    github: { repos: (env.GITHUB_REPOS?.split(",") ?? user.github?.repos ?? []).map(normalizeRepo).filter(Boolean) },
     azure: {
       subscription: env.AZURE_SUBSCRIPTION ?? user.azure?.subscription ?? "",
       workspace: env.AZURE_LOG_WORKSPACE ?? user.azure?.workspace ?? "",
@@ -53,6 +53,10 @@ export async function loadConfig(root = findRoot()): Promise<HubConfig> {
     },
   };
 }
+
+/** "https://github.com/o/r.git/" or " o/r " -> "o/r". */
+export const normalizeRepo = (s: string) =>
+  s.trim().replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\/+$/, "").replace(/\.git$/i, "");
 
 function findRoot(): string {
   let dir = process.cwd();

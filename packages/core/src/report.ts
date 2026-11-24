@@ -4,8 +4,10 @@ export interface BriefReport {
   date: string; // YYYY-MM-DD
   runtime: string;
   items: BriefItem[];
-  /** Agents that failed: agent name -> reason. */
+  /** Agents that failed (or whose tools failed with a known cause): agent name -> reason. */
   failures: Record<string, string>;
+  /** Tool calls the gate denied: "agent: reason". */
+  blocked?: string[];
   usedAiCredits: number;
   maxAiCredits: number;
   durationMs: number;
@@ -20,6 +22,15 @@ const SOURCE_LABEL: Record<BriefItem["source"], string> = {
 };
 const RANK = { high: 0, medium: 1, low: 2 } as const;
 const PRIORITY_LABEL = { high: "Cao", medium: "Vừa", low: "Thấp" } as const;
+
+/** Known failure causes -> what the user should do. Agents never fix these themselves. */
+const HINTS: [RegExp, string][] = [
+  [/EULA/i, "Tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal (agent không được gọi accept_eula)."],
+  [/AADSTS65001/, "Work IQ cần admin consent: hỏi IT."],
+  [/VS30063/, "Tài khoản `az` không thuộc org ADO: `az login` đúng tài khoản, hoặc đặt ADO_AZURE_CONFIG_DIR (đường dẫn tuyệt đối) trong .env."],
+  [/ngân sách|limits_exhausted/i, "Tăng AGENTHUB_MAX_AI_CREDITS nếu cần (tối thiểu 30 mỗi agent)."],
+];
+export const hint = (error: string) => HINTS.find(([re]) => re.test(error))?.[1] ?? null;
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -68,9 +79,10 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;border-top:1px solid va
 </style></head><body><main>
 <h1>Check việc — ${esc(r.date)}</h1>
 <p class="sub">${r.items.length} mục · ${action.length} cần bạn xử lý${failures.length ? ` · ${failures.length} nguồn lỗi` : ""}</p>
-${failures.length ? `<h2>Không lấy được</h2><ul>${failures.map(([a, e]) => `<li class="fail"><b>${esc(a)}</b>: ${esc(e)}</li>`).join("")}</ul>` : ""}
+${failures.length ? `<h2>Không lấy được</h2><ul>${failures.map(([a, e]) => `<li class="fail"><b>${esc(a)}</b>: ${esc(e)}${hint(e) ? `<p class="action">→ ${esc(hint(e)!)}</p>` : ""}</li>`).join("")}</ul>` : ""}
 ${action.length ? `<h2>Cần bạn xử lý</h2>${list(action)}` : ""}
 ${bySource.map(([s, items]) => `<h2>${SOURCE_LABEL[s as BriefItem["source"]]}</h2>${list(items)}`).join("\n")}
+${r.blocked?.length ? `<h2>Đã chặn</h2><ul>${r.blocked.map((b) => `<li class="item low">${esc(b)}</li>`).join("")}</ul>` : ""}
 <footer>Runtime: ${esc(r.runtime)} · AI Credits: ${r.usedAiCredits.toFixed(2)} / ${r.maxAiCredits} · ${(r.durationMs / 1000).toFixed(1)}s</footer>
 </main></body></html>
 `;

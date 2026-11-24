@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { MCPServerConfig } from "@github/copilot-sdk";
 import type { HubConfig } from "./config.ts";
@@ -48,8 +49,6 @@ const prompt = (role: string) => `${role}\n\n${UNTRUSTED_RULE}\n\n${OUTPUT_RULE}
  */
 const only = (server: string, tools: string[]) => tools.map((t) => `${server}-${t}`);
 const WORKIQ_READ = only("workiq", ["retrieve", "ask", "fetch", "search_paths", "get_schema"]);
-/** ponytail: mock-mcp still uses its own names; drop once it mirrors the real Work IQ tools. */
-const WORKIQ_MOCK_READ = only("workiq", ["mail_list_unread", "teams_list_unread"]);
 const ADO_READ = only("ado", [
   "wit_work_item", "wit_query", "search_workitem", "wit_backlog", "work", "core_list_projects", "core_list_project_teams",
 ]);
@@ -59,12 +58,23 @@ const GITHUB_READ = only("github", [
   "search_repositories", "list_branches",
 ]);
 
+/**
+ * ADO_AZURE_CONFIG_DIR must be an absolute, existing dir; otherwise `az` silently falls back to the
+ * default profile and ADO fails later with VS30063. Never prints the token, only the setting.
+ */
+export function adoConfigDirProblem(dir = process.env.ADO_AZURE_CONFIG_DIR): string | undefined {
+  if (!dir) return undefined;
+  if (!path.isAbsolute(dir)) return `ADO_AZURE_CONFIG_DIR phải là đường dẫn tuyệt đối (đang là "${dir}")`;
+  if (!existsSync(dir)) return `ADO_AZURE_CONFIG_DIR không tồn tại: ${dir}. Chạy az login với AZURE_CONFIG_DIR này trước`;
+  return undefined;
+}
+
 /** `npx <args>` as a stdio command. On Windows npx is a .cmd shim, so go through cmd /c. */
 const npx = (args: string[]) =>
   process.platform === "win32" ? { command: "cmd", args: ["/c", "npx", ...args] } : { command: "npx", args };
 
 /** Mock MCP server (stdio) from packages/mock-mcp, run through tsx. */
-function mockServer(cfg: HubConfig, name: "workiq" | "azure"): MCPServerConfig {
+function mockServer(cfg: HubConfig, name: "workiq" | "ado" | "azure"): MCPServerConfig {
   return {
     type: "stdio",
     command: process.execPath,
@@ -94,7 +104,7 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
           ? { type: "stdio", ...npx(["-y", "@microsoft/workiq", "mcp"]), tools: ["*"], timeout: 60_000 }
           : mockServer(cfg, "workiq"),
       },
-      readTools: real ? WORKIQ_READ : WORKIQ_MOCK_READ,
+      readTools: WORKIQ_READ,
     },
     {
       name: "board-reader",
@@ -102,20 +112,26 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       kind: "reader",
       prompt: prompt("Bạn là agent đọc board Azure DevOps."),
       task:
-        `Trong project "${cfg.ado.project}", liệt kê work item/user story giao cho tôi hoặc tôi theo dõi ` +
+        `Trong project "${cfg.ado.project || "(mọi project)"}", liệt kê work item/user story giao cho tôi hoặc tôi theo dõi ` +
         "có thay đổi trong 24h qua (source=ado). Nêu thay đổi gì, ai đổi.",
       mcpServers: {
-        ado: {
-          type: "http",
-          url: `https://mcp.dev.azure.com/${cfg.ado.org}`,
-          headers: { "X-MCP-Readonly": "true" },
-          tools: ["*"],
-          timeout: 60_000,
-        },
+        ado: real
+          ? {
+              type: "http",
+              url: `https://mcp.dev.azure.com/${cfg.ado.org}`,
+              headers: { "X-MCP-Readonly": "true" },
+              tools: ["*"],
+              timeout: 60_000,
+            }
+          : mockServer(cfg, "ado"),
       },
       readTools: ADO_READ,
       missingConfig:
-        cfg.runtime !== "mock" && !(cfg.ado.org && cfg.ado.project) ? "Chưa cấu hình ADO_ORG / ADO_PROJECT" : undefined,
+        real && !(cfg.ado.org && cfg.ado.project)
+          ? "Chưa cấu hình ADO_ORG / ADO_PROJECT"
+          : real
+            ? adoConfigDirProblem()
+            : undefined,
     },
     {
       name: "code-reader",

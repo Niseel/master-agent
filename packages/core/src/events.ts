@@ -8,7 +8,7 @@ export type HubEvent =
   | { type: "agent.failed"; agent: string; error: string }
   | { type: "agent.result"; agent: string; items: BriefItem[] }
   | { type: "tool.started"; agent: string; server: string; tool: string; callId: string }
-  | { type: "tool.completed"; callId: string; ok: boolean }
+  | { type: "tool.completed"; callId: string; ok: boolean; error?: string }
   | { type: "approval.requested"; id: string; agent: string; tool: string; args: unknown }
   | { type: "approval.resolved"; id: string; decision: "approve" | "reject" }
   | { type: "usage"; agent?: string; usedAiCredits: number; maxAiCredits: number }
@@ -31,7 +31,12 @@ export function mapSdkEvent(agent: string, ev: SessionEvent): HubEvent | null {
       };
     }
     case "tool.execution_complete":
-      return { type: "tool.completed", callId: ev.data.toolCallId, ok: ev.data.success };
+      return {
+        type: "tool.completed",
+        callId: ev.data.toolCallId,
+        ok: ev.data.success,
+        ...(ev.data.error ? { error: ev.data.error.message } : {}),
+      };
     case "session.error":
       return { type: "agent.failed", agent, error: ev.data.message };
     case "session_limits_exhausted.requested":

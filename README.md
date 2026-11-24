@@ -14,7 +14,7 @@ Bối cảnh, quyết định kiến trúc, lộ trình: [PLAN.md](PLAN.md).
 | `AgentRuntime` + runtime `mock` / `byok` / `copilot` | ✅ |
 | 4 agent đọc (comms, board, code, cloud), mỗi agent 1 session + MCP riêng | ✅ |
 | Approval gate (`onPreToolUse` + `onPermissionRequest`), audit log JSONL | ✅ |
-| Mock MCP (Work IQ, Azure Monitor) + fixture có prompt injection | ✅ |
+| Mock MCP (Work IQ, ADO, Azure Monitor) theo tên tool thật từ Bước 0 + fixture có prompt injection | ✅ |
 | `pnpm brief` + báo cáo HTML | ✅ `mock`; ✅ `byok` thật ở Home (login Copilot cá nhân, 3 agent, ~47s, model gắn nhãn mail chứa prompt injection, không gọi tool ghi) |
 | Bước 0 ở Work (auth, Work IQ, ADO, Azure, tên tool thật) | ⏳ [Work] — xem docs/WORK.md |
 | Dashboard realtime (Phase 2) | chưa làm |
@@ -26,7 +26,7 @@ Cần Node `^20.19` hoặc `>=22.12`. pnpm qua corepack (có sẵn trong Node):
 ```bash
 corepack enable   # hoặc dùng "corepack pnpm" thay cho "pnpm"
 pnpm install
-pnpm test         # 13 test: gate, mapper event, schema, mock end-to-end
+pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end
 pnpm brief        # runtime mock, phát lại fixtures/scenarios/brief-ok.jsonl
 ```
 
@@ -34,9 +34,10 @@ Kịch bản lỗi (auth, timeout, hết ngân sách, sai schema):
 
 ```bash
 AGENTHUB_SCENARIO=brief-failures pnpm brief
+AGENTHUB_SCENARIO=brief-auth pnpm brief       # lỗi EULA Work IQ, VS30063 ADO, tool built-in bị chặn
 ```
 
-SDK thật ở Home (`byok`): Work IQ + Azure là MCP giả, GitHub là MCP thật của tài khoản cá nhân.
+SDK thật ở Home (`byok`): Work IQ, ADO, Azure là MCP giả, GitHub là MCP thật của tài khoản cá nhân.
 Model: `ANTHROPIC_API_KEY` nếu có, không thì dùng login Copilot cá nhân (`gh auth login`).
 
 ```bash

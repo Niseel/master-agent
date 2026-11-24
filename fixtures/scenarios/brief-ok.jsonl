@@ -2,14 +2,14 @@
 {"event":{"type":"agent.started","agent":"board-reader","at":"2026-11-23T08:00:00Z"}}
 {"event":{"type":"agent.started","agent":"code-reader","at":"2026-11-23T08:00:00Z"}}
 {"event":{"type":"agent.started","agent":"cloud-reader","at":"2026-11-23T08:00:00Z"}}
-{"delayMs":150,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"mail_list_unread","callId":"c1"}}
+{"delayMs":150,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"retrieve","callId":"c1"}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"github","tool":"search_pull_requests","callId":"c2"}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor_alerts_list","callId":"c3"}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"c4"}}
 {"delayMs":200,"event":{"type":"tool.completed","callId":"c1","ok":true}}
-{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"mail_send","callId":"c5"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"do_action","callId":"c5"}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"c5","ok":true}}
-{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"teams_list_unread","callId":"c6"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"fetch","callId":"c6"}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"c2","ok":true}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"c3","ok":true}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor_logs_query","callId":"c7"}}

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { readerAgents, type AgentSpec } from "../src/agents.ts";
-import { loadConfig } from "../src/config.ts";
-import { mcpAuth } from "../src/runtime/sdk.ts";
+import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
+import { loadConfig, normalizeRepo } from "../src/config.ts";
+import { mcpAuth, waitForMcp } from "../src/runtime/sdk.ts";
 import { decide, looksLikeWrite, redact } from "../src/security.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -76,4 +76,33 @@ test("redact hides secrets at any depth", () => {
     headers: { Authorization: "***" },
     list: [{ apiKey: "***" }],
   });
+});
+
+test("waitForMcp: stops once servers connect, or when time runs out", async () => {
+  const fake = (statuses: string[]) => {
+    let i = 0;
+    const session = {
+      rpc: { mcp: { list: async () => ({ servers: [{ name: "ado", status: statuses[Math.min(i++, statuses.length - 1)] }] }) } },
+    } as unknown as Parameters<typeof waitForMcp>[0];
+    return { session, calls: () => i };
+  };
+  const ok = fake(["pending", "needs-auth", "connected"]);
+  assert.deepEqual(await waitForMcp(ok.session, ["ado"], 1000, 1), []);
+  assert.equal(ok.calls(), 3);
+  const stuck = fake(["needs-auth"]);
+  assert.deepEqual(await waitForMcp(stuck.session, ["ado"], 20, 5), ["ado"]);
+  assert.deepEqual(await waitForMcp(fake(["failed"]).session, ["ado"], 1000, 1), []); // failed = settled, not connecting
+});
+
+test("adoConfigDirProblem: relative or missing dir is reported", () => {
+  assert.equal(adoConfigDirProblem(undefined), undefined);
+  assert.match(adoConfigDirProblem(".azure-ado")!, /tuyệt đối/);
+  assert.match(adoConfigDirProblem(path.join(root, "no-such-dir"))!, /không tồn tại/);
+  assert.equal(adoConfigDirProblem(root), undefined);
+});
+
+test("normalizeRepo: URL, .git and slashes become owner/repo", () => {
+  for (const s of ["https://github.com/o/r", "https://github.com/o/r.git", "http://www.github.com/o/r/", " o/r ", "o/r.git"]) {
+    assert.equal(normalizeRepo(s), "o/r", s);
+  }
 });

@@ -218,6 +218,9 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] Render báo cáo HTML tĩnh (`reports/brief-YYYY-MM-DD.html`): nhóm theo nguồn, mục "Cần bạn xử lý" lên đầu, màu theo priority, link trực tiếp, footer ghi số credit đã dùng.
 - [x] Audit log JSONL.
 
+- [x] Mock MCP + fixture theo kết quả Bước 0 (2026-11-24): workiq tên thật, server `ado` mới (tool gộp có `action`), kịch bản `brief-auth` (EULA, `VS30063`, built-in `github-mcp-server` bị chặn), gợi ý xử lý lỗi trong báo cáo, mục "Đã chặn".
+- [ ] [Work] Ghi tên tham số + giá trị `action` thật (từ `args` trong audit log) để mock khớp schema thật. Xem docs/WORK.md mục 4.
+
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 
 **Tiêu chí xong:** chạy `pnpm brief` mỗi sáng ra báo cáo đúng, < 3 phút, nằm trong ngân sách credit đặt trước, không có tool ghi nào được gọi.

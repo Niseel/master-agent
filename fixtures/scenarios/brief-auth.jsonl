@@ -1,0 +1,25 @@
+{"event":{"type":"agent.started","agent":"comms-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"board-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"code-reader","at":"2026-11-23T08:00:00Z"}}
+{"event":{"type":"agent.started","agent":"cloud-reader","at":"2026-11-23T08:00:00Z"}}
+{"delayMs":100,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"retrieve","callId":"e1"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"e1","ok":false,"error":"The WorkIQ End User License Agreement (EULA) has not been accepted. Accept the EULA to enable WorkIQ tools."}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"accept_eula","callId":"e2"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"e2","ok":true}}
+{"event":{"type":"agent.result","agent":"comms-reader","items":[]}}
+{"event":{"type":"agent.completed","agent":"comms-reader","durationMs":900}}
+{"delayMs":100,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"e3"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"e3","ok":false,"error":"VS30063: You are not authorized to access https://dev.azure.com."}}
+{"event":{"type":"agent.result","agent":"board-reader","items":[]}}
+{"event":{"type":"agent.completed","agent":"board-reader","durationMs":1100}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"github-mcp-server","tool":"get_me","callId":"e4"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"e4","ok":true}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"github","tool":"search_pull_requests","callId":"e5"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"e5","ok":true}}
+{"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway.","priority":"medium","actionRequired":true,"suggestedAction":"Review PR #87","link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:30:00Z"}]}}
+{"event":{"type":"agent.completed","agent":"code-reader","durationMs":1200}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor_alerts_list","callId":"e6"}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"e6","ok":true}}
+{"event":{"type":"agent.result","agent":"cloud-reader","items":[]}}
+{"event":{"type":"agent.completed","agent":"cloud-reader","durationMs":800}}
+{"event":{"type":"usage","usedAiCredits":4.2,"maxAiCredits":120}}

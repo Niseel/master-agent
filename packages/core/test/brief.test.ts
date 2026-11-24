@@ -31,7 +31,7 @@ async function run(scenario: string, onApproval: "approve" | "reject" = "reject"
 
 test("mock e2e: write tool from reader is blocked, approval rejected, results valid", async () => {
   const ev = await run("brief-ok");
-  const blocked = ev.find((e) => e.type === "tool.started" && e.tool === "mail_send") as { callId: string } | undefined;
+  const blocked = ev.find((e) => e.type === "tool.started" && e.tool === "do_action") as { callId: string } | undefined;
   assert.ok(blocked);
   assert.deepEqual(ev.find((e) => e.type === "tool.completed" && e.callId === blocked.callId), {
     type: "tool.completed",
@@ -71,8 +71,31 @@ test("report: action items first, links only http(s), HTML escaped", () => {
 });
 
 test("scenario files are valid JSONL", () => {
-  for (const f of ["brief-ok", "brief-failures"]) {
+  for (const f of ["brief-ok", "brief-failures", "brief-auth"]) {
     const text = readFileSync(path.join(root, "fixtures/scenarios", `${f}.jsonl`), "utf8");
     for (const line of text.split("\n").filter(Boolean)) JSON.parse(line);
   }
+});
+
+test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are reported", async () => {
+  const ev = await run("brief-auth");
+  const errors = ev.flatMap((e) => (e.type === "tool.completed" && e.error ? [e.error] : []));
+  assert.ok(errors.some((e) => /EULA/.test(e)) && errors.some((e) => /VS30063/.test(e)));
+  const blocked = ev.flatMap((e) => (e.type === "message" && e.text.startsWith("Bị chặn") ? [e.text] : []));
+  assert.ok(blocked.some((t) => t.includes("github-mcp-server-get_me")), "built-in GitHub tool blocked");
+  assert.ok(blocked.some((t) => t.includes("workiq-accept_eula")), "agent may not accept the EULA itself");
+
+  const html = renderReport({
+    date: "2026-11-23",
+    runtime: "mock",
+    usedAiCredits: 0,
+    maxAiCredits: 120,
+    durationMs: 0,
+    failures: { "comms-reader": `Tool lỗi: ${errors[0]}`, "board-reader": `Tool lỗi: ${errors[1]}` },
+    blocked,
+    items: [],
+  });
+  assert.ok(html.includes("npx -y @microsoft/workiq accept-eula"));
+  assert.ok(html.includes("ADO_AZURE_CONFIG_DIR"));
+  assert.ok(html.includes("<h2>Đã chặn</h2>"));
 });

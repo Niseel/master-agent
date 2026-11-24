@@ -36,6 +36,10 @@
 
 ## 3. Việc cho Home (theo thứ tự)
 
+> **2026-11-24: Home đã làm xong 1–8** (commit sau `213fdce`). Riêng phần "mở rộng `list-tools` để in
+> schema" ở mục 4: SDK không trả input schema (`McpTools` chỉ có `name`, `description`, `ui`), nên thay
+> bằng cách đọc `args` trong audit log ở Work (docs/WORK.md mục 4).
+
 Theo CLAUDE.md: sửa `packages/mock-mcp` + `fixtures/` trước, rồi mới sửa code.
 
 1. **mock-mcp workiq → tên thật.** Thay `mail_list_unread`/`teams_list_unread`/`mail_send` bằng

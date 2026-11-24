@@ -1,0 +1,32 @@
+{
+  "projects": [{ "id": "p1", "name": "Orders", "state": "wellFormed" }],
+  "teams": [{ "id": "tm1", "name": "Orders Team", "projectName": "Orders" }],
+  "iterations": [{ "id": "it1", "name": "Sprint 47", "path": "Orders\\Sprint 47", "startDate": "2026-11-17", "finishDate": "2026-11-28" }],
+  "backlogs": [{ "id": "Microsoft.RequirementCategory", "name": "Stories" }],
+  "queries": [{ "id": "q1", "name": "Assigned to me, changed 24h", "path": "My Queries/Changed 24h", "wiql": "SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.ChangedDate] >= @Today - 1" }],
+  "workItems": [
+    {
+      "id": 1234,
+      "type": "User Story",
+      "title": "Hoàn tiền một phần cho đơn hàng",
+      "state": "Active",
+      "previousState": "New",
+      "assignedTo": "Người dùng (tôi)",
+      "changedBy": "Phạm D (PO)",
+      "changedDate": "2026-11-22T16:00:00Z",
+      "change": "State New → Active; thêm 2 acceptance criteria",
+      "url": "https://dev.azure.com/org/proj/_workitems/edit/1234"
+    },
+    {
+      "id": 1240,
+      "type": "Bug",
+      "title": "Timeout khi gọi payment-gateway",
+      "state": "New",
+      "assignedTo": "Người dùng (tôi)",
+      "changedBy": "Lê C",
+      "changedDate": "2026-11-23T03:40:00Z",
+      "change": "Tạo mới, gán cho bạn, priority 1",
+      "url": "https://dev.azure.com/org/proj/_workitems/edit/1240"
+    }
+  ]
+}
