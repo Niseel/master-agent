@@ -1,24 +1,73 @@
 {
-  "subscriptions": [{ "subscriptionId": "00000000-0000-0000-0000-000000000000", "displayName": "Contoso Dev", "state": "Enabled" }],
-  "resourceGroups": [{ "name": "rg-orders", "location": "westeurope" }],
-  "resources": [
-    { "name": "orders-api", "type": "Microsoft.Web/sites", "resourceGroup": "rg-orders" },
-    { "name": "law-orders", "type": "Microsoft.OperationalInsights/workspaces", "resourceGroup": "rg-orders" }
-  ],
-  "workspaces": [{ "name": "law-orders", "customerId": "11111111-1111-1111-1111-111111111111", "resourceGroup": "rg-orders" }],
-  "alerts": [
+  "subscriptions": [
     {
-      "id": "a1",
-      "name": "orders-api 5xx > 2%",
-      "severity": "Sev1",
-      "state": "Fired",
-      "firedAt": "2026-11-23T03:20:00Z",
-      "resource": "orders-api (App Service)",
-      "link": "https://portal.azure.com/#alert/a1"
+      "subscriptionId": "00000000-0000-0000-0000-000000000000",
+      "displayName": "Contoso Dev",
+      "state": "Enabled"
+    }
+  ],
+  "resourceGroups": [
+    {
+      "name": "rg-orders",
+      "location": "westeurope"
+    }
+  ],
+  "resources": [
+    {
+      "name": "orders-api",
+      "type": "Microsoft.Web/sites",
+      "resourceGroup": "rg-orders"
+    },
+    {
+      "name": "law-orders",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "resourceGroup": "rg-orders"
+    }
+  ],
+  "workspaces": [
+    {
+      "name": "law-orders",
+      "customerId": "11111111-1111-1111-1111-111111111111",
+      "resourceGroup": "rg-orders"
     }
   ],
   "logs": [
-    { "time": "2026-11-23T03:18:00Z", "level": "Error", "message": "Timeout calling payment-gateway after 30s", "count": 214 },
-    { "time": "2026-11-23T04:02:00Z", "level": "Warning", "message": "Retry storm detected on queue orders-events", "count": 37 }
+    {
+      "table": "AppExceptions",
+      "time": "2026-11-23T03:18:00Z",
+      "level": "Error",
+      "message": "Timeout calling payment-gateway after 30s",
+      "count": 214
+    },
+    {
+      "table": "AppExceptions",
+      "time": "2026-11-23T04:02:00Z",
+      "level": "Warning",
+      "message": "Retry storm detected on queue orders-events",
+      "count": 37
+    }
+  ],
+  "tables": [
+    "AppExceptions",
+    "AppRequests",
+    "AzureActivity"
+  ],
+  "activityLog": [
+    {
+      "eventTimestamp": "2026-11-23T02:55:00Z",
+      "operationName": "Microsoft.Web/sites/restart/action",
+      "status": "Failed",
+      "caller": "deploy-pipeline",
+      "resourceName": "orders-api",
+      "resourceGroup": "rg-orders"
+    },
+    {
+      "eventTimestamp": "2026-11-22T21:10:00Z",
+      "operationName": "Microsoft.Web/sites/config/write",
+      "status": "Succeeded",
+      "caller": "Người dùng (tôi)",
+      "resourceName": "orders-api",
+      "resourceGroup": "rg-orders"
+    }
   ]
 }

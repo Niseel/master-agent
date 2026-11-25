@@ -6,7 +6,7 @@ import { readerAgents } from "../src/agents.ts";
 import { AgentResult } from "../src/brief.ts";
 import { loadConfig } from "../src/config.ts";
 import type { HubEvent } from "../src/events.ts";
-import { renderReport } from "../src/report.ts";
+import { hint, isBlocking, renderReport, summarize } from "../src/report.ts";
 import { MockRuntime } from "../src/runtime/mock.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -98,4 +98,29 @@ test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are re
   assert.ok(html.includes("npx -y @microsoft/workiq accept-eula"));
   assert.ok(html.includes("ADO_AZURE_CONFIG_DIR"));
   assert.ok(html.includes("<h2>Đã chặn</h2>"));
+});
+
+test("summarize: retried model errors are not failures; blocking errors drop the agent's items", async () => {
+  const ok = summarize(await run("brief-ok"));
+  assert.equal(ok.items.length, 10);
+  assert.deepEqual(ok.failures, {}, "unknown arguments / WIQL errors were retried");
+
+  const auth = summarize(await run("brief-auth"));
+  assert.deepEqual(Object.keys(auth.failures).sort(), ["board-reader", "comms-reader"]);
+  assert.match(auth.failures["comms-reader"], /^Tool lỗi: .*EULA/);
+  assert.ok(!auth.items.some((i) => /EULA/.test(i.title)), "EULA item only restated the tool error");
+  assert.equal(auth.items.length, 1);
+  assert.equal(auth.blocked?.length, 2);
+  assert.equal(auth.usedAiCredits, 4.2);
+});
+
+test("report hints: config and model mistakes", () => {
+  for (const [error, want] of [
+    ["Chưa cấu hình AZURE_SUBSCRIPTION / AZURE_LOG_WORKSPACE", ".env"],
+    ["Request rejected due to unknown arguments: resource-group", "cloud-reader"],
+    ['{"status":400} ErrorCode: BadArgumentError', "KQL"],
+    ["Expecting constant value. The error is caused by «SELECT».", "@Follows"],
+  ]) assert.ok(hint(error)?.includes(want), error);
+  assert.equal(isBlocking("Request rejected due to unknown arguments: x"), false);
+  assert.equal(isBlocking("VS30063: You are not authorized"), true);
 });

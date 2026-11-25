@@ -11,9 +11,11 @@
 {"delayMs":50,"event":{"type":"tool.completed","callId":"c5","ok":true}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"fetch","callId":"c6"}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"c2","ok":true}}
-{"delayMs":50,"event":{"type":"tool.completed","callId":"c3","ok":true}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c3","ok":false,"error":"Request rejected due to unknown arguments: resource-group"}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"c7"}}
-{"delayMs":100,"event":{"type":"tool.completed","callId":"c4","ok":true}}
+{"delayMs":100,"event":{"type":"tool.completed","callId":"c4","ok":false,"error":"Expecting constant value. The error is caused by «SELECT»."}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"c8"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c8","ok":true}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"c6","ok":true}}
 {"delayMs":50,"event":{"type":"approval.requested","id":"ap1","agent":"code-reader","tool":"github-add_issue_comment","args":{"owner":"me","repo":"orders","issue_number":87,"body":"LGTM"}}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"c7","ok":true}}

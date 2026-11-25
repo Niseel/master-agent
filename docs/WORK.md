@@ -127,3 +127,4 @@ Ghi mọi khác biệt so với mock vào `docs/work-feedback.md` (dạng cấu 
 này để sửa mock MCP, fixture và code cho khớp thật.
 
 Không commit: `.env`, `logs/`, `reports/` (đã có trong `.gitignore`).
+`pnpm test` ghi audit vào thư mục tạm (`AGENTHUB_LOG_DIR`), nên `logs/` chỉ có bản ghi của lần chạy thật.

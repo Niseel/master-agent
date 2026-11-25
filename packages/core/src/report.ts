@@ -1,4 +1,5 @@
 import type { BriefItem } from "./brief.ts";
+import type { HubEvent } from "./events.ts";
 
 export interface BriefReport {
   date: string; // YYYY-MM-DD
@@ -23,14 +24,58 @@ const SOURCE_LABEL: Record<BriefItem["source"], string> = {
 const RANK = { high: 0, medium: 1, low: 2 } as const;
 const PRIORITY_LABEL = { high: "Cao", medium: "Vừa", low: "Thấp" } as const;
 
-/** Known failure causes -> what the user should do. Agents never fix these themselves. */
-const HINTS: [RegExp, string][] = [
-  [/EULA/i, "Tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal (agent không được gọi accept_eula)."],
-  [/AADSTS65001/, "Work IQ cần admin consent: hỏi IT."],
-  [/VS30063/, "Tài khoản `az` không thuộc org ADO: `az login` đúng tài khoản, hoặc đặt ADO_AZURE_CONFIG_DIR (đường dẫn tuyệt đối) trong .env."],
-  [/ngân sách|limits_exhausted/i, "Tăng AGENTHUB_MAX_AI_CREDITS nếu cần (tối thiểu 30 mỗi agent)."],
+/**
+ * Known failure causes -> what the user should do. Agents never fix these themselves.
+ * `blocking`: the source is unusable until the user acts (auth, EULA, config). Other errors are model
+ * mistakes the model usually retries past, so they only show when the agent fails with them.
+ */
+const HINTS: { re: RegExp; text: string; blocking: boolean }[] = [
+  { re: /EULA/i, blocking: true, text: "Tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal (agent không được gọi accept_eula)." },
+  { re: /AADSTS65001/, blocking: true, text: "Work IQ cần admin consent: hỏi IT." },
+  { re: /VS30063/, blocking: true, text: "Tài khoản `az` không thuộc org ADO: `az login` đúng tài khoản, hoặc đặt ADO_AZURE_CONFIG_DIR (đường dẫn tuyệt đối) trong .env." },
+  { re: /^Chưa cấu hình/, blocking: true, text: "Đặt biến còn thiếu trong `.env` (mẫu: `.env.example`, hướng dẫn: docs/WORK.md)." },
+  { re: /ngân sách|limits_exhausted/i, blocking: true, text: "Tăng AGENTHUB_MAX_AI_CREDITS nếu cần (tối thiểu 30 mỗi agent)." },
+  {
+    re: /unknown arguments|Missing Required options|is not available for the 'monitor' tool/,
+    blocking: false,
+    text: "Model gọi sai lệnh/tham số Azure MCP. Nếu lặp lại: sửa task `cloud-reader` trong agents.ts (danh sách lệnh ở docs/mcp-tools.md).",
+  },
+  { re: /BadArgumentError/, blocking: false, text: "KQL sai tên bảng/cột. Nếu lặp lại: ghi tên bảng đúng vào task `cloud-reader`." },
+  { re: /«SELECT»|Expecting constant value/, blocking: false, text: "WIQL không có subquery: dùng `[System.Id] IN (@Follows)` hoặc `wit_work_item` action `my` (task `board-reader`)." },
 ];
-export const hint = (error: string) => HINTS.find(([re]) => re.test(error))?.[1] ?? null;
+const findHint = (error: string) => HINTS.find(({ re }) => re.test(error));
+export const hint = (error: string) => findHint(error)?.text ?? null;
+export const isBlocking = (error: string) => findHint(error)?.blocking ?? false;
+
+/**
+ * Run events -> report data. A blocking tool error marks the agent failed even if it "completed", and drops
+ * its items: they only restate the error (seen at Work with EULA).
+ * ponytail: drops ALL items of that agent; filter per item if a source can be partly blocked.
+ */
+export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "failures" | "blocked" | "usedAiCredits"> {
+  const callAgent = new Map<string, string>();
+  const itemsBy: Record<string, BriefItem[]> = {};
+  const failures: Record<string, string> = {};
+  const blocked: string[] = [];
+  const usedBy: Record<string, number> = {};
+  let usedTotal = 0;
+  for (const ev of events) {
+    if (ev.type === "tool.started") callAgent.set(ev.callId, ev.agent);
+    else if (ev.type === "tool.completed") {
+      const agent = callAgent.get(ev.callId);
+      if (agent && ev.error && isBlocking(ev.error)) failures[agent] ??= `Tool lỗi: ${ev.error}`;
+    } else if (ev.type === "agent.result") (itemsBy[ev.agent] ??= []).push(...ev.items);
+    else if (ev.type === "agent.failed") failures[ev.agent] = ev.error;
+    else if (ev.type === "message" && ev.text.startsWith("Bị chặn")) blocked.push(`${ev.agent}: ${ev.text}`);
+    else if (ev.type === "usage") {
+      if (ev.agent) usedBy[ev.agent] = ev.usedAiCredits;
+      else usedTotal = ev.usedAiCredits;
+    }
+  }
+  const items = Object.entries(itemsBy).flatMap(([agent, items]) => (failures[agent] ? [] : items));
+  const usedAiCredits = Math.max(usedTotal, Object.values(usedBy).reduce((a, b) => a + b, 0));
+  return { items, failures, blocked, usedAiCredits };
+}
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

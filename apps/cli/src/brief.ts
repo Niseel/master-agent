@@ -6,9 +6,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readerAgents } from "@agenthub/core/agents";
-import type { BriefItem } from "@agenthub/core/brief";
 import { loadConfig } from "@agenthub/core/config";
-import { hint, renderReport } from "@agenthub/core/report";
+import type { HubEvent } from "@agenthub/core/events";
+import { renderReport, summarize } from "@agenthub/core/report";
 import { createRuntime } from "@agenthub/core/runtime/index";
 
 try {
@@ -19,19 +19,15 @@ const cfg = await loadConfig();
 const agents = readerAgents(cfg);
 const runtime = await createRuntime(cfg);
 const t0 = Date.now();
-const items: BriefItem[] = [];
-const failures: Record<string, string> = {};
-const blocked: string[] = [];
+const events: HubEvent[] = [];
 const callAgent = new Map<string, string>();
-/** First tool error with a known cause per agent: the agent may still "complete" with 0 items. */
-const toolErrors: Record<string, string> = {};
-const usedBy: Record<string, number> = {};
-let usedTotal = 0;
 
 console.log(`▶ check việc — runtime=${cfg.runtime}, budget=${cfg.maxAiCredits} credits, ${agents.length} agent`);
 process.on("SIGINT", () => void runtime.stop().then(() => process.exit(130)));
 
+// Console progress only; the report is built from `events` by summarize().
 for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || "check việc", agents, budget: cfg.maxAiCredits })) {
+  events.push(ev);
   switch (ev.type) {
     case "agent.started":
       console.log(`  … ${ev.agent}`);
@@ -40,42 +36,28 @@ for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || 
       console.log(`    ↳ ${ev.agent} → ${ev.server}/${ev.tool}`);
       callAgent.set(ev.callId, ev.agent);
       break;
-    case "tool.completed": {
-      const agent = callAgent.get(ev.callId);
-      if (agent && ev.error && hint(ev.error)) toolErrors[agent] ??= ev.error;
-      if (ev.error) console.log(`    ✗ ${agent ?? "?"}: ${ev.error}`);
-      break;
-    }
-    case "agent.result":
-      items.push(...ev.items);
+    case "tool.completed":
+      if (ev.error) console.log(`    ✗ ${callAgent.get(ev.callId) ?? "?"}: ${ev.error}`);
       break;
     case "agent.completed":
-      if (!failures[ev.agent]) console.log(`  ✓ ${ev.agent}${ev.durationMs ? ` (${(ev.durationMs / 1000).toFixed(1)}s)` : ""}`);
+      console.log(`  ✓ ${ev.agent}${ev.durationMs ? ` (${(ev.durationMs / 1000).toFixed(1)}s)` : ""}`);
       break;
     case "agent.failed":
-      failures[ev.agent] = ev.error;
       console.log(`  ✗ ${ev.agent}: ${ev.error}`);
       break;
     case "approval.requested":
       console.log(`  ⛔ ${ev.agent} xin gọi ${ev.tool} — tự từ chối (brief chỉ-đọc)`);
       runtime.resolveApproval(ev.id, "reject", "Brief là chế độ chỉ-đọc");
       break;
-    case "usage":
-      if (ev.agent) usedBy[ev.agent] = ev.usedAiCredits;
-      else usedTotal = ev.usedAiCredits;
-      break;
     case "message":
-      if (ev.text.startsWith("Bị chặn")) {
-        blocked.push(`${ev.agent}: ${ev.text}`);
-        console.log(`    ⛔ ${ev.agent}: ${ev.text}`);
-      }
+      if (ev.text.startsWith("Bị chặn")) console.log(`    ⛔ ${ev.agent}: ${ev.text}`);
       break;
   }
 }
 await runtime.stop();
-for (const [agent, error] of Object.entries(toolErrors)) failures[agent] ??= `Tool lỗi: ${error}`;
 
 // Items from an agent that later failed (e.g. schema error) are already excluded by the runtime.
+const { items, failures, blocked, usedAiCredits } = summarize(events);
 const date = new Date().toISOString().slice(0, 10);
 const html = renderReport({
   date,
@@ -83,7 +65,7 @@ const html = renderReport({
   items,
   failures,
   blocked,
-  usedAiCredits: Math.max(usedTotal, Object.values(usedBy).reduce((a, b) => a + b, 0)),
+  usedAiCredits,
   maxAiCredits: cfg.maxAiCredits,
   durationMs: Date.now() - t0,
 });

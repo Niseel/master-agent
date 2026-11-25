@@ -2,7 +2,7 @@
  * Fake MCP servers (stdio) backed by fixtures/data/*.json. Synthetic data only.
  *   node --import tsx packages/mock-mcp/src/server.ts workiq|ado|azure
  * Tool names follow docs/mcp-tools.md (real names from Step 0 at Work).
- * ponytail: input schemas are guessed (SDK does not expose real ones); fix them from the `args`
+ * ponytail: input schemas are partly guessed (SDK does not expose real ones); real params come from the `args`
  * recorded in logs/audit-*.jsonl at Work.
  * Each server also exposes WRITE tools, so tests can prove reader agents are blocked from them.
  */
@@ -43,8 +43,9 @@ if (kind === "workiq") {
   );
   server.registerTool(
     "fetch",
-    { description: "Fetch one or more WorkIQ entities by path", inputSchema: { paths: z.array(z.string()) }, annotations: readOnly },
-    async ({ paths }) => json(paths.map((p) => entities[p] ?? { path: p, error: "not found" })),
+    // Real param (Work, 2026-11-25): `entityUrls`, relative Graph-style paths.
+    { description: "Fetch one or more WorkIQ entities by path", inputSchema: { entityUrls: z.array(z.string()) }, annotations: readOnly },
+    async ({ entityUrls }) => json(entityUrls.map((p) => entities[p] ?? { path: p, error: "not found" })),
   );
   server.registerTool(
     "search_paths",
@@ -70,25 +71,52 @@ if (kind === "workiq") {
   const data = load("ado");
   type WorkItem = { id: number };
   const byId = (id: number) => data.workItems.find((w: WorkItem) => w.id === id);
-  // Real ADO tools are grouped, with an `action` parameter. ponytail: action enums guessed from descriptions.
+  // Real ADO tools are grouped, with an `action` parameter. `wiql`, `get_batch`, `list_revisions`, `my` and
+  // their params were seen at Work (2026-11-25); `get`/`get_results` are from the descriptions.
   server.registerTool(
     "wit_query",
     {
-      description: "Read operations on work item queries. Use 'action': 'get', 'get_results'",
-      inputSchema: { action: z.enum(["get", "get_results"]), project: z.string().optional(), query: z.string().optional(), id: z.string().optional() },
+      description: "Read operations on work item queries. Use 'action': 'get', 'get_results', 'wiql'",
+      inputSchema: {
+        action: z.enum(["get", "get_results", "wiql"]),
+        project: z.string().optional(),
+        query: z.string().optional(),
+        id: z.string().optional(),
+        wiql: z.string().optional(),
+        top: z.number().optional(),
+      },
       annotations: readOnly,
     },
-    async ({ action }) => json(action === "get" ? data.queries[0] : { workItems: data.workItems }),
+    async ({ action, wiql = "" }) => {
+      if (action === "get") return json(data.queries[0]);
+      // WIQL has no subqueries; this is the real error text.
+      if (/\(\s*SELECT/i.test(wiql)) return fail("Expecting constant value. The error is caused by «SELECT».");
+      return json({ workItems: data.workItems });
+    },
   );
   server.registerTool(
     "wit_work_item",
     {
-      description: "Read operations on work items. Use 'action': 'get', 'get_batch'",
-      inputSchema: { action: z.enum(["get", "get_batch"]), id: z.number().optional(), ids: z.array(z.number()).optional() },
+      description: "Read operations on work items. Use 'action': 'get', 'get_batch', 'list_revisions', 'my'",
+      inputSchema: {
+        action: z.enum(["get", "get_batch", "list_revisions", "my"]),
+        project: z.string().optional(),
+        id: z.number().optional(),
+        ids: z.array(z.number()).optional(),
+        fields: z.array(z.string()).optional(),
+        workItemId: z.number().optional(),
+        type: z.string().optional(),
+        top: z.number().optional(),
+      },
       annotations: readOnly,
     },
-    async ({ action, id, ids }) =>
-      action === "get" ? (byId(id ?? -1) ? json(byId(id!)) : fail(`Work item ${id} not found`)) : json((ids ?? []).map(byId).filter(Boolean)),
+    async ({ action, id, ids, workItemId }) => {
+      if (action === "get_batch") return json((ids ?? []).map(byId).filter(Boolean));
+      if (action === "my") return json(data.workItems);
+      const w = byId((action === "get" ? id : workItemId) ?? -1);
+      if (!w) return fail(`Work item ${id ?? workItemId} not found`);
+      return json(action === "get" ? w : [{ rev: 2, changedBy: w.changedBy, changedDate: w.changedDate, change: w.change }]);
+    },
   );
   server.registerTool(
     "wit_backlog",
@@ -129,11 +157,26 @@ if (kind === "workiq") {
   // Real server (`--namespace monitor --read-only`) has one `monitor` tool that dispatches sub-commands
   // (`learn: true` lists them) plus subscription/group tools. Only a few sub-commands are mocked.
   // The real `monitor` has no readOnlyHint; the mock sets it because the real server runs read-only.
-  const commands: Record<string, { required: string[]; run: () => unknown }> = {
-    monitor_workspace_list: { required: [], run: () => data.workspaces },
-    monitor_workspace_log_query: { required: ["workspace", "query", "table"], run: () => data.logs },
-    monitor_activitylog_list: { required: ["resource-name"], run: () => data.alerts },
+  // ponytail: optional params are the ones the model used at Work; the real list may be longer.
+  type Params = Record<string, unknown>;
+  const commands: Record<string, { required: string[]; optional: string[]; run: (p: Params) => unknown }> = {
+    monitor_workspace_list: { required: [], optional: [], run: () => data.workspaces },
+    monitor_table_list: { required: ["resource-group", "workspace"], optional: ["table-type"], run: () => data.tables },
+    monitor_workspace_log_query: {
+      required: ["workspace", "query", "table"],
+      optional: ["hours", "limit"],
+      run: (p) => {
+        // ponytail: "valid KQL" = starts with a known table name.
+        const table = String(p.query).trim().split(/[\s|]/)[0];
+        if (!data.tables.includes(table)) {
+          throw new Error(`{"status":400,"message":"Failed to resolve table or column expression named '${table}'"} ErrorCode: BadArgumentError`);
+        }
+        return data.logs;
+      },
+    },
+    monitor_activitylog_list: { required: ["resource-name"], optional: ["resource-group", "resource-type", "hours", "top"], run: () => data.activityLog },
   };
+  const COMMON = ["subscription", "tenant"];
   server.registerTool(
     "monitor",
     {
@@ -150,8 +193,16 @@ if (kind === "workiq") {
       if (learn || !command) return json(Object.entries(commands).map(([c, { required }]) => ({ command: c, required })));
       const cmd = commands[command];
       if (!cmd) return fail(`The command '${command}' is not available for the 'monitor' tool.`);
+      const known = [...COMMON, ...cmd.required, ...cmd.optional];
+      const unknown = Object.keys(parameters).filter((p) => !known.includes(p));
+      if (unknown.length) return fail(`Request rejected due to unknown arguments: ${unknown.join(", ")}`);
       const missing = cmd.required.filter((p) => parameters[p] === undefined);
-      return missing.length ? fail(`Missing Required options: ${missing.map((p) => `--${p}`).join(", ")}`) : json(cmd.run());
+      if (missing.length) return fail(`Missing Required options: ${missing.map((p) => `--${p}`).join(", ")}`);
+      try {
+        return json(cmd.run(parameters));
+      } catch (e) {
+        return fail((e as Error).message);
+      }
     },
   );
   server.registerTool(

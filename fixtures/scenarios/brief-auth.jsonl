@@ -6,7 +6,7 @@
 {"delayMs":100,"event":{"type":"tool.completed","callId":"e1","ok":false,"error":"The WorkIQ End User License Agreement (EULA) has not been accepted. Accept the EULA to enable WorkIQ tools."}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"accept_eula","callId":"e2"}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"e2","ok":true}}
-{"event":{"type":"agent.result","agent":"comms-reader","items":[]}}
+{"event":{"type":"agent.result","agent":"comms-reader","items":[{"source":"outlook","title":"Work IQ chưa chấp nhận EULA","summary":"Không đọc được mail: cần chấp nhận EULA.","priority":"high","actionRequired":true,"suggestedAction":"Chấp nhận EULA","link":null,"timestamp":null}]}}
 {"event":{"type":"agent.completed","agent":"comms-reader","durationMs":900}}
 {"delayMs":100,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"e3"}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"e3","ok":false,"error":"VS30063: You are not authorized to access https://dev.azure.com."}}

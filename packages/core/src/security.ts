@@ -53,9 +53,9 @@ export function redact(value: unknown): unknown {
   return value;
 }
 
-/** Append one line to logs/audit-YYYY-MM-DD.jsonl. */
+/** Append one line to <AGENTHUB_LOG_DIR or root/logs>/audit-YYYY-MM-DD.jsonl. Tests set AGENTHUB_LOG_DIR to a temp dir. */
 export function audit(root: string, entry: { agent: string; tool: string; args: unknown; decision: string; reason?: string }) {
-  const dir = path.join(root, "logs");
+  const dir = process.env.AGENTHUB_LOG_DIR || path.join(root, "logs");
   mkdirSync(dir, { recursive: true });
   const now = new Date();
   const line = JSON.stringify({ at: now.toISOString(), ...entry, args: redact(entry.args) });

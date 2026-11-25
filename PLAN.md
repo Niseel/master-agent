@@ -221,7 +221,8 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] Mock MCP + fixture theo kết quả Bước 0 (2026-11-24): workiq tên thật, server `ado` mới (tool gộp có `action`), kịch bản `brief-auth` (EULA, `VS30063`, built-in `github-mcp-server` bị chặn), gợi ý xử lý lỗi trong báo cáo, mục "Đã chặn".
 - [x] [Work] Ghi tên tham số + giá trị `action` thật (từ `args` trong audit log) để mock khớp schema thật. Xem docs/WORK.md mục 4. — 2026-11-25: xem work-feedback.md.
 - [x] [Work] `pnpm brief` runtime `copilot` (2026-11-25): 4 agent ok, 60.5s, 44.29/120 AI Credits, không tool ghi nào được gọi.
-- [ ] [Home] Theo work-feedback 2026-11-25: mock workiq `fetch` dùng `entityUrls`; mock azure từ chối tham số lạ + thêm `monitor_table_list` + fixture `BadArgumentError`; mock ado lỗi WIQL subquery; viết lại task `cloud-reader`/`board-reader`; gợi ý lỗi azure/WIQL trong `report.ts`; test ghi audit vào thư mục tạm.
+- [x] [Home] Theo work-feedback 2026-11-25 (xong 2026-11-25): mock workiq `fetch` dùng `entityUrls`; mock azure từ chối tham số lạ + thêm `monitor_table_list` + fixture `BadArgumentError`; mock ado lỗi WIQL subquery; viết lại task `cloud-reader`/`board-reader`; gợi ý lỗi azure/WIQL trong `report.ts`; test ghi audit vào thư mục tạm.
+- [ ] [Work] Chạy lại `pnpm brief` runtime `copilot` sau khi đổi task: so số lần gọi `monitor` và thời gian của `cloud-reader` (trước: 15 lần, ~59s); kiểm tra board-reader không còn lỗi WIQL subquery.
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 

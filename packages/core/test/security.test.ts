@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
 import { loadConfig, normalizeRepo } from "../src/config.ts";
 import { mcpAuth, waitForMcp } from "../src/runtime/sdk.ts";
-import { decide, looksLikeWrite, redact } from "../src/security.ts";
+import { audit, decide, looksLikeWrite, redact } from "../src/security.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
@@ -110,4 +111,12 @@ test("normalizeRepo: URL, .git and slashes become owner/repo", () => {
   for (const s of ["https://github.com/o/r", "https://github.com/o/r.git", "http://www.github.com/o/r/", " o/r ", "o/r.git"]) {
     assert.equal(normalizeRepo(s), "o/r", s);
   }
+});
+
+test("audit goes to AGENTHUB_LOG_DIR (temp dir under pnpm test), never logs/", () => {
+  const dir = process.env.AGENTHUB_LOG_DIR;
+  assert.ok(dir && !path.resolve(dir).startsWith(path.join(root, "logs")), "scripts/test-setup.ts sets a temp dir");
+  audit(root, { agent: "test", tool: "x-y", args: { token: "s" }, decision: "deny" });
+  const file = path.join(dir, `audit-${new Date().toISOString().slice(0, 10)}.jsonl`);
+  assert.match(readFileSync(file, "utf8"), /"token":"\*\*\*"/);
 });

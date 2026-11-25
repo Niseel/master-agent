@@ -36,7 +36,8 @@ export const UNTRUSTED_RULE =
 const OUTPUT_RULE =
   "Chỉ dùng tool chỉ-đọc. Trả về JSON đúng schema { items: BriefItem[] }. " +
   "Trường không có giá trị thì để null. summary viết tiếng Việt, ngắn gọn. " +
-  "actionRequired = true khi người dùng cần duyệt/trả lời/sửa gì đó.";
+  "actionRequired = true khi người dùng cần duyệt/trả lời/sửa gì đó. " +
+  "Lỗi tool (auth, EULA, cấu hình, quyền) KHÔNG phải item: không tạo item cho lỗi, hệ thống tự báo lỗi.";
 
 const prompt = (role: string) => `${role}\n\n${UNTRUSTED_RULE}\n\n${OUTPUT_RULE}`;
 
@@ -115,7 +116,10 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       prompt: prompt("Bạn là agent đọc board Azure DevOps."),
       task:
         `Trong project "${cfg.ado.project || "(mọi project)"}", liệt kê work item/user story giao cho tôi hoặc tôi theo dõi ` +
-        "có thay đổi trong 24h qua (source=ado). Nêu thay đổi gì, ai đổi.",
+        "có thay đổi trong 24h qua (source=ado). Nêu thay đổi gì, ai đổi. " +
+        "WIQL không hỗ trợ subquery (`IN (SELECT ...)` sẽ lỗi): item tôi theo dõi dùng `[System.Id] IN (@Follows)`, " +
+        "item giao cho tôi dùng `[System.AssignedTo] = @Me`, lọc thời gian bằng `[System.ChangedDate] >= @Today - 1`. " +
+        "Hoặc dùng `wit_work_item` action `my`.",
       mcpServers: {
         ado: real
           ? {
@@ -158,10 +162,19 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       name: "cloud-reader",
       displayName: "Azure",
       kind: "reader",
-      prompt: prompt("Bạn là agent đọc log và cảnh báo Azure Monitor."),
+      prompt: prompt("Bạn là agent đọc log Azure Monitor (Log Analytics và activity log)."),
+      // Command names and params from docs/mcp-tools.md + docs/work-feedback.md (2026-11-25). The server has
+      // no "list alerts" command. Spelling the chain out cut the trial-and-error calls seen at Work.
       task:
         `Workspace Log Analytics "${cfg.azure.workspace}" (subscription ${cfg.azure.subscription}). ` +
-        "Liệt kê cảnh báo đang bật và lỗi nổi bật trong 24h qua (source=azure).",
+        "Liệt kê lỗi nổi bật trong 24h qua (source=azure): exception/request lỗi trong Log Analytics và thao tác lỗi trong activity log. " +
+        "Tool `monitor`: `command` là tên đầy đủ có tiền tố `monitor_`, tham số đặt trong `parameters`. Trình tự: " +
+        "`monitor_workspace_list` {subscription} lấy resource group của workspace → " +
+        "`monitor_table_list` {subscription, resource-group, workspace} xem bảng có dữ liệu → " +
+        "`monitor_workspace_log_query` {subscription, workspace, table, query, hours: 24} (KHÔNG truyền resource-group; " +
+        "query bắt đầu bằng tên bảng có thật) → " +
+        "`monitor_activitylog_list` {subscription, resource-group, resource-name, hours: 24} (bắt buộc resource-name; " +
+        "lấy tên resource từ `group_resource_list`). Không chắc tham số thì gọi `monitor` với learn: true một lần.",
       mcpServers: {
         azure: real
           ? {

@@ -27,7 +27,7 @@ Cần Node `^20.19` hoặc `>=22.12`. pnpm qua corepack (có sẵn trong Node):
 ```bash
 corepack enable   # hoặc dùng "corepack pnpm" thay cho "pnpm"
 pnpm install
-pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end
+pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end (audit vào thư mục tạm)
 pnpm brief        # runtime mock, phát lại fixtures/scenarios/brief-ok.jsonl
 ```
 

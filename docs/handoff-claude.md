@@ -4,6 +4,7 @@
 > Đọc kèm: [PLAN.md](../PLAN.md), [work-feedback.md](work-feedback.md) (các mục 2026-11-25),
 > [mcp-tools.md](mcp-tools.md), [step0-results.md](step0-results.md).
 > Bàn giao trước (2026-11-23): Home đã làm xong mục 1–8 (commit `d309405`).
+> **2026-11-25: Home đã làm xong mục 1–7 ở §3** (xem [handoff-copilot.md](handoff-copilot.md) cho việc tiếp ở Work).
 
 ## 1. Trạng thái
 
