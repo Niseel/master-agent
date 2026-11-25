@@ -54,8 +54,13 @@ test("copilot allowlists: built-in and write/state tools are denied", async () =
     ["comms-reader", "workiq-create_entity", "deny"],
     ["board-reader", "ado-wit_query", "allow"],
     ["board-reader", "github-mcp-server-get_me", "deny"],
+    ["cloud-reader", "azure-monitor", "allow"],
+    ["cloud-reader", "azure-monitor_alert_dismiss", "deny"],
   ];
   for (const [n, t, want] of cases) assert.equal(decide(agent(n), t).decision, want, `${n} ${t}`);
+  // azure-monitor sub-commands are only kept read-only by the server flag.
+  const azure = agent("cloud-reader").mcpServers.azure as { args: string[] };
+  assert.ok(azure.args.includes("--read-only"));
 });
 
 test("mcpAuth only hands out tokens for known origins", async () => {

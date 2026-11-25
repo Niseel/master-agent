@@ -1,7 +1,8 @@
 # MCP tools
 
 > Sinh bởi `pnpm list-tools` lúc 2026-11-23T06:53:29.437Z (runtime=copilot). Chỉ thông tin cấu trúc.
-> Cột **Loại** là đoán theo tên, đã sửa tay ngày 2026-11-23 (ô có dấu `*`). Allowlist thật nằm ở `readTools` trong
+> Cột **Loại** là đoán theo tên, đã sửa tay ngày 2026-11-23 (ô có dấu `*`); mục azure thêm tay ngày 2026-11-25.
+> Allowlist thật nằm ở `readTools` trong
 > `packages/core/src/agents.ts`; không phải tool `read` nào cũng được đưa vào. Chạy lại `pnpm list-tools` sẽ ghi đè bảng
 > này, nên phải sửa tay lại.
 
@@ -90,3 +91,33 @@
 | `github-search_repositories` | read | Find GitHub repositories by name, description, readme, topics, or other metadata. Perfect for discovering projects, find |
 | `github-search_users` | read | Find GitHub users by username, real name, or other profile information. Useful for locating developers, contributors, or |
 | `github-ui_get` | read | Fetch UI data for MCP Apps (labels, assignees, milestones, issue types, branches, issue fields, reviewers). |
+
+## azure (agent: cloud-reader) — status: connected
+
+| Runtime name | Loại (đoán) | Mô tả |
+|---|---|---|
+| `azure-monitor` | read* | Tool gộp namespace monitor; server chạy `--read-only` (xem dưới). Không có `readOnlyHint`. |
+| `azure-group_list` | read | List all resource groups in a subscription. |
+| `azure-group_resource_list` | read | List all resources in a resource group. |
+| `azure-subscription_list` | read | List all Azure subscriptions for the current account. |
+
+`azure-monitor` nhận `{ intent: string (bắt buộc), command?: string, parameters?: object, learn?: boolean }`.
+Gọi `learn: true` để lấy danh sách lệnh con, rồi gọi lại với `command` + `parameters`. Allowlist chỉ chặn được
+ở mức tool, nên lệnh con chỉ-đọc dựa vào cờ `--read-only` của server. Lệnh con thấy được khi chạy `--read-only`
+(2026-11-25, 22 lệnh; tham số bắt buộc trong ngoặc):
+
+- `monitor_workspace_list`, `monitor_workspace_log_query` (workspace, query, table),
+  `monitor_workspace_log_search` (resource-group, workspace, table, query, timespan),
+  `monitor_resource_log_query` (query, table, resource-id)
+- `monitor_table_list` (workspace, table-type, resource-group), `monitor_table_type_list` (workspace, resource-group)
+- `monitor_activitylog_list` (resource-name)
+- `monitor_metrics_query` (metric-names, metric-namespace, resource),
+  `monitor_metrics_batchquery` (resources, metric-names, metric-namespace), `monitor_metrics_definitions` (resource)
+- `monitor_healthmodels_list`, `monitor_healthmodels_get` / `monitor_healthmodels_inspect` (health-model, resource-group)
+- `monitor_webtests_get`, `monitor_ingestion_validate` (resource-group, data-collection-rule, log-data; chỉ kiểm tra,
+  không gửi dữ liệu), `monitor_instrumentation_get-learning-resource`
+- `monitor_traces_account_list`, `monitor_traces_field_list`, `monitor_traces_query_run`,
+  `monitor_traces_query_resume`, `monitor_traces_query_analyze-top-attributes`,
+  `monitor_traces_query_analyze-critical-path`
+
+Không có lệnh liệt kê alert của Azure Monitor (alert đang bật) trong namespace này.

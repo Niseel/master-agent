@@ -1,4 +1,11 @@
 {
+  "subscriptions": [{ "subscriptionId": "00000000-0000-0000-0000-000000000000", "displayName": "Contoso Dev", "state": "Enabled" }],
+  "resourceGroups": [{ "name": "rg-orders", "location": "westeurope" }],
+  "resources": [
+    { "name": "orders-api", "type": "Microsoft.Web/sites", "resourceGroup": "rg-orders" },
+    { "name": "law-orders", "type": "Microsoft.OperationalInsights/workspaces", "resourceGroup": "rg-orders" }
+  ],
+  "workspaces": [{ "name": "law-orders", "customerId": "11111111-1111-1111-1111-111111111111", "resourceGroup": "rg-orders" }],
   "alerts": [
     {
       "id": "a1",

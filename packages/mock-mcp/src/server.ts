@@ -126,16 +126,58 @@ if (kind === "workiq") {
   );
 } else if (kind === "azure") {
   const data = load("azure");
+  // Real server (`--namespace monitor --read-only`) has one `monitor` tool that dispatches sub-commands
+  // (`learn: true` lists them) plus subscription/group tools. Only a few sub-commands are mocked.
+  // The real `monitor` has no readOnlyHint; the mock sets it because the real server runs read-only.
+  const commands: Record<string, { required: string[]; run: () => unknown }> = {
+    monitor_workspace_list: { required: [], run: () => data.workspaces },
+    monitor_workspace_log_query: { required: ["workspace", "query", "table"], run: () => data.logs },
+    monitor_activitylog_list: { required: ["resource-name"], run: () => data.alerts },
+  };
   server.registerTool(
-    "monitor_alerts_list",
-    { description: "List active Azure Monitor alerts", inputSchema: {}, annotations: readOnly },
-    async () => json(data.alerts),
+    "monitor",
+    {
+      description: "Azure Monitor operations. Run with learn=true to list commands, then call with command and parameters.",
+      inputSchema: {
+        intent: z.string(),
+        command: z.string().optional(),
+        parameters: z.record(z.string(), z.unknown()).optional(),
+        learn: z.boolean().optional(),
+      },
+      annotations: readOnly,
+    },
+    async ({ command, parameters = {}, learn }) => {
+      if (learn || !command) return json(Object.entries(commands).map(([c, { required }]) => ({ command: c, required })));
+      const cmd = commands[command];
+      if (!cmd) return fail(`The command '${command}' is not available for the 'monitor' tool.`);
+      const missing = cmd.required.filter((p) => parameters[p] === undefined);
+      return missing.length ? fail(`Missing Required options: ${missing.map((p) => `--${p}`).join(", ")}`) : json(cmd.run());
+    },
   );
   server.registerTool(
-    "monitor_logs_query",
-    { description: "Run a KQL query on Log Analytics", inputSchema: { query: z.string() }, annotations: readOnly },
-    async () => json(data.logs),
+    "subscription_list",
+    { description: "List all Azure subscriptions for the current account.", inputSchema: { tenant: z.string().optional() }, annotations: readOnly },
+    async () => json(data.subscriptions),
   );
+  server.registerTool(
+    "group_list",
+    {
+      description: "List all resource groups in a subscription.",
+      inputSchema: { subscription: z.string().optional(), tenant: z.string().optional() },
+      annotations: readOnly,
+    },
+    async () => json(data.resourceGroups),
+  );
+  server.registerTool(
+    "group_resource_list",
+    {
+      description: "List all resources in a resource group.",
+      inputSchema: { "resource-group": z.string(), subscription: z.string().optional(), tenant: z.string().optional() },
+      annotations: readOnly,
+    },
+    async (args) => json(data.resources.filter((r: { resourceGroup: string }) => r.resourceGroup === args["resource-group"])),
+  );
+  // Synthetic write tool (the real server hides writes with --read-only).
   server.registerTool(
     "monitor_alert_dismiss",
     { description: "Dismiss an alert", inputSchema: { id: z.string() } },

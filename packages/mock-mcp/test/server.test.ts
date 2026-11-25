@@ -30,7 +30,7 @@ for (const [agentName, key] of [["comms-reader", "workiq"], ["board-reader", "ad
         if (!t.annotations?.readOnlyHint) assert.equal(decide(agent, `${key}-${t.name}`).decision, "deny", t.name);
       }
       // Read tools answer with fixture data.
-      const first = tools.find((t) => t.annotations?.readOnlyHint && !Object.keys(t.inputSchema.properties ?? {}).length)
+      const first = tools.find((t) => t.annotations?.readOnlyHint && !t.inputSchema.required?.length)
         ?? tools.find((t) => t.name === "retrieve" || t.name === "wit_query")!;
       const args = first.name === "retrieve" ? { query: "x" } : first.name === "wit_query" ? { action: "get_results" } : {};
       const r = await client.callTool({ name: first.name, arguments: args });

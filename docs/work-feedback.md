@@ -48,3 +48,68 @@ Mẫu mỗi mục:
 - Thấy: kiểu `McpAuthRequest`/`McpAuthResult` không được export từ gói; dùng
   `NonNullable<SessionConfig["onMcpAuthRequest"]>`.
 - Thấy: mỗi lần smoke tốn khoảng 1 premium request (`totalPremiumRequestCost: 1`).
+
+## 2026-11-25 — ado (board-reader), tham số thật từ audit
+- Thấy: `wit_query` `{action:"wiql", project:string, wiql:string, top:number}`.
+- Thấy: `wit_work_item` dùng các `action`:
+  - `get_batch` `{ids:number[], fields:string[]}`
+  - `list_revisions` `{project, workItemId:number, top}`
+  - `my` `{project, type:"myactivity", top}`
+- Thấy: lần `wit_query` đầu lỗi `Expecting constant value. The error is caused by «SELECT»`. Nguyên nhân: model
+  viết subquery `[System.Id] IN (SELECT ...)`, WIQL không hỗ trợ. Lần thử lại bỏ subquery, nhưng cũng bỏ luôn
+  điều kiện "đang follow".
+- Mock đang giả định: `wit_query` trả kết quả với mọi WIQL.
+- Đề xuất: thêm vào task của board-reader gợi ý WIQL: không dùng subquery, item đang follow dùng
+  `[System.Id] IN (@Follows)`, hoặc dùng `wit_work_item` `action:"my"`. Mock trả lỗi trên khi `wiql` chứa `(SELECT`.
+
+## 2026-11-25 — github (code-reader), tham số thật từ audit
+- Thấy: `actions_list` `{method:"list_workflow_runs", owner, repo, perPage:number, workflow_runs_filter?:{status?, event?}}`
+  (giá trị đã gặp: `status:"completed"`, `event:"push"`).
+- Thấy: `pull_request_read` `{method:"get_comments"|"get_review_comments", owner, repo, pullNumber:number}`.
+- Thấy: `search_pull_requests` `{query:string}`; `get_me` `{}`.
+
+## 2026-11-25 — workiq (comms-reader)
+- Thấy: `fetch` `{entityUrls:string[]}`. Vẫn lỗi EULA.
+- Thấy: khi tool lỗi EULA, model vẫn trả 1 item (source Outlook, priority high) nói về EULA. Lỗi này hiện hai
+  lần trong báo cáo: ở "Không lấy được" và ở "Cần bạn xử lý".
+- Đề xuất: khi agent có lỗi tool với nguyên nhân đã biết (EULA, cấu hình, auth), bỏ các item của agent đó nếu
+  item chỉ nhắc lại lỗi. Hoặc dặn trong prompt: lỗi tool không phải là item.
+
+## 2026-11-25 — test / audit
+- Thấy: `pnpm test` ghi audit vào `logs/audit-<ngày>.jsonl` thật (agent, tool giả, gồm cả
+  `github-add_issue_comment` → reject). Bản ghi test lẫn với bản ghi của brief thật, nên khó kiểm
+  tiêu chí "không có tool ghi nào được allow".
+- Đề xuất: khi chạy test, ghi audit vào thư mục tạm (ví dụ biến `AGENTHUB_LOG_DIR` hoặc tham số cho logger).
+
+## 2026-11-25 — workiq (comms-reader), sau khi chấp nhận EULA
+- Thấy: user chấp nhận EULA thủ công, không cần admin consent. Lỗi EULA ở mục trên đã hết.
+- Thấy: `fetch` `{entityUrls:string[]}` (đường dẫn Graph tương đối) chạy được; 2 lần gọi, agent ok.
+- Mock đang giả định: `fetch` `{paths:string[]}`.
+- Đề xuất: đổi schema mock `fetch` sang `entityUrls`, sửa fixture tương ứng.
+
+## 2026-11-25 — azure (cloud-reader)
+- Thấy: server chạy `--namespace monitor --read-only`, 4 tool:
+  - `monitor` `{intent, command?, parameters?, learn?}`, không có `readOnlyHint`
+  - `subscription_list` `{tenant?}`
+  - `group_list` `{subscription?, tenant?}`
+  - `group_resource_list` `{"resource-group", subscription?, tenant?}`
+- Thấy: `monitor` có 22 lệnh con, tên đầy đủ có tiền tố `monitor_`. Không có lệnh liệt kê alert.
+  An toàn dựa vào `--read-only` + allowlist `AZURE_READ` (đã thay `"*"`).
+- Thấy: chuỗi gọi của model: `monitor_workspace_list` `{subscription}` → `monitor_table_list`
+  `{subscription, resource-group, workspace}` → `monitor_workspace_log_query`
+  `{subscription, workspace, table, query, hours}` → `monitor_activitylog_list` `{subscription, resource-group, hours}`.
+- Thấy: lỗi thật:
+  - `The command '<cmd>' is not available for the 'monitor' tool.` (khi thiếu tiền tố `monitor_`)
+  - `Request rejected due to unknown arguments: resource-group` (trên `log_query`)
+  - `Missing Required options: --resource-name` kèm Command Spec JSON
+  - KQL sai: `{"status":400,...,ErrorCode: BadArgumentError}`
+- Thấy: runtime vẫn thử gọi `github-mcp-server-*` built-in; bị deny đúng.
+- Thấy: cloud-reader chậm nhất (~59s), nhiều lần gọi `monitor` (15) do thử sai.
+- Mock đã sửa ở Work: thông điệp lỗi command-not-available và Missing Required options khớp thật.
+- Mock đang giả định: chấp nhận tham số lạ; không có `monitor_table_list`; `activitylog_list` trả alert.
+- Đề xuất:
+  - Viết lại task cloud-reader: Log Analytics + activity log (bỏ "cảnh báo đang bật"), ghi tên lệnh đầy đủ
+    hoặc dặn gọi `learn:true` trước; `log_query` không nhận `resource-group`.
+  - Mock: từ chối tham số lạ với thông điệp thật, thêm `monitor_table_list`, thêm fixture `BadArgumentError`.
+  - `report.ts`: thêm HINT cho "Chưa cấu hình" (trỏ `.env`/WORK.md) và cho `unknown arguments`/`BadArgumentError`.
+- Ghi chú: lỗi WIQL subquery của board-reader lặp lại (xem mục ado ở trên).

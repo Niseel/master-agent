@@ -187,12 +187,12 @@ Mục tiêu: xác nhận các mảnh ghép chạy được với tài khoản c�
 Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monorepo, `AgentRuntime` + runtime `mock`, `HubEvent`, mock MCP servers với tên tool tạm (sẽ đổi theo `docs/mcp-tools.md`), report renderer, khung dashboard.
 
 - [x] Cài Copilot CLI, đăng nhập bằng tài khoản có license công ty, chạy được prompt đơn giản. (Fail → policy Copilot CLI bị tắt, cần hỏi admin GitHub org.) — 2026-11-23: SDK chạy được.
-- [ ] Work IQ trong Copilot CLI: hỏi "tóm tắt mail chưa đọc hôm nay" và "tóm tắt tin nhắn Teams chưa đọc". Ghi lại: có hiện màn hình xin admin consent không, có lỗi license không. — 2026-11-23: connected, bị chặn bởi EULA (user tự chấp nhận).
-- [ ] ADO Remote MCP trong Copilot CLI: "liệt kê work item giao cho tôi thay đổi trong 24h". — 2026-11-23: connected (OAuth qua profile `az` riêng, `ADO_AZURE_CONFIG_DIR`), `core_list_projects` chạy được. Còn thử truy vấn work item 24h.
+- [x] Work IQ trong Copilot CLI: hỏi "tóm tắt mail chưa đọc hôm nay" và "tóm tắt tin nhắn Teams chưa đọc". Ghi lại: có hiện màn hình xin admin consent không, có lỗi license không. — 2026-11-23: connected, bị chặn bởi EULA (user tự chấp nhận). 2026-11-25: sau EULA chạy được, xem work-feedback.
+- [x] ADO Remote MCP trong Copilot CLI: "liệt kê work item giao cho tôi thay đổi trong 24h". — 2026-11-23: connected (OAuth qua profile `az` riêng, `ADO_AZURE_CONFIG_DIR`), `core_list_projects` chạy được. 2026-11-25: `pnpm brief` (copilot) board-reader ok.
 - [x] GitHub MCP: "PR đang chờ tôi review". — 2026-11-23: connected, tool đọc chạy được.
-- [ ] Azure MCP: "cảnh báo / lỗi trong Log Analytics workspace X trong 24h".
+- [x] Azure MCP: "cảnh báo / lỗi trong Log Analytics workspace X trong 24h". — 2026-11-25: ok, 4 tool (`monitor` gộp 22 lệnh con, không có lệnh liệt kê alert); allowlist `AZURE_READ`.
 - [ ] Playwright MCP: quay thử video một trang bất kỳ.
-- [x] [Work] Liệt kê **tên tool thật** (chạy `pnpm list-tools`, xem docs/WORK.md) của từng MCP server (để làm allowlist) → `docs/mcp-tools.md`, phân loại đọc/ghi. — workiq, ado, github xong; cloud-reader còn `"*"`.
+- [x] [Work] Liệt kê **tên tool thật** (chạy `pnpm list-tools`, xem docs/WORK.md) của từng MCP server (để làm allowlist) → `docs/mcp-tools.md`, phân loại đọc/ghi. — workiq, ado, github, azure xong.
 - [x] Script tối thiểu `scripts/sdk-smoke.ts`: tạo session bằng SDK, gọi 1 MCP, in event ra console.
 
 **Nếu Work IQ bị chặn:** tiếp tục MVP với ADO + GitHub + Azure; ghi lại để xin IT consent (Work IQ là công cụ first-party của Microsoft). Không tự ý dùng MCP bên thứ ba truy cập dữ liệu M365 khi chưa hỏi IT.
@@ -219,7 +219,9 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] Audit log JSONL.
 
 - [x] Mock MCP + fixture theo kết quả Bước 0 (2026-11-24): workiq tên thật, server `ado` mới (tool gộp có `action`), kịch bản `brief-auth` (EULA, `VS30063`, built-in `github-mcp-server` bị chặn), gợi ý xử lý lỗi trong báo cáo, mục "Đã chặn".
-- [ ] [Work] Ghi tên tham số + giá trị `action` thật (từ `args` trong audit log) để mock khớp schema thật. Xem docs/WORK.md mục 4.
+- [x] [Work] Ghi tên tham số + giá trị `action` thật (từ `args` trong audit log) để mock khớp schema thật. Xem docs/WORK.md mục 4. — 2026-11-25: xem work-feedback.md.
+- [x] [Work] `pnpm brief` runtime `copilot` (2026-11-25): 4 agent ok, 60.5s, 44.29/120 AI Credits, không tool ghi nào được gọi.
+- [ ] [Home] Theo work-feedback 2026-11-25: mock workiq `fetch` dùng `entityUrls`; mock azure từ chối tham số lạ + thêm `monitor_table_list` + fixture `BadArgumentError`; mock ado lỗi WIQL subquery; viết lại task `cloud-reader`/`board-reader`; gợi ý lỗi azure/WIQL trong `report.ts`; test ghi audit vào thư mục tạm.
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 

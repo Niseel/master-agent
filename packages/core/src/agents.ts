@@ -20,7 +20,7 @@ export interface AgentSpec {
   /**
    * Allowlist of runtime tool names (`<key>-<tool>`).
    * "*" = any tool of the agent's own servers that does not look like a write.
-   * ponytail: "*" only where real names are not verified yet (cloud-reader); see docs/mcp-tools.md.
+   * Use "*" only until the real names are verified (docs/mcp-tools.md).
    */
   readTools: string[] | "*";
   model?: string;
@@ -57,6 +57,8 @@ const GITHUB_READ = only("github", [
   "issue_read", "actions_list", "actions_get", "get_job_logs", "list_commits", "get_commit", "get_file_contents",
   "search_repositories", "list_branches",
 ]);
+// `monitor` dispatches sub-commands via `args.command`; only the server's `--read-only` flag keeps them read-only.
+const AZURE_READ = only("azure", ["monitor", "subscription_list", "group_list", "group_resource_list"]);
 
 /**
  * ADO_AZURE_CONFIG_DIR must be an absolute, existing dir; otherwise `az` silently falls back to the
@@ -170,7 +172,7 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
             }
           : mockServer(cfg, "azure"),
       },
-      readTools: "*",
+      readTools: AZURE_READ,
       missingConfig:
         real && !(cfg.azure.subscription && cfg.azure.workspace)
           ? "Chưa cấu hình AZURE_SUBSCRIPTION / AZURE_LOG_WORKSPACE"

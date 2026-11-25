@@ -57,7 +57,7 @@ for (const a of agents) {
     const { tools } = await session.rpc.mcp.listTools({ serverName: key });
     lines.push("| Runtime name | Loại (đoán) | Mô tả |", "|---|---|---|");
     for (const t of tools) {
-      const desc = (t.description ?? "").split("\n")[0].replaceAll("|", "\\|").slice(0, 120);
+      const desc = (t.description ?? "").split(/\r?\n/)[0].replaceAll("|", "\\|").slice(0, 120);
       lines.push(`| \`${key}-${t.name}\` | ${looksLikeWrite(t.name) ? "write" : "read"} | ${desc} |`);
     }
     lines.push("");
