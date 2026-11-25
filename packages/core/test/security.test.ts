@@ -60,8 +60,10 @@ test("copilot allowlists: built-in and write/state tools are denied", async () =
   ];
   for (const [n, t, want] of cases) assert.equal(decide(agent(n), t).decision, want, `${n} ${t}`);
   // azure-monitor sub-commands are only kept read-only by the server flag.
-  const azure = agent("cloud-reader").mcpServers.azure as { args: string[] };
+  const azure = agent("cloud-reader").mcpServers.azure as { args: string[]; env?: Record<string, string> };
   assert.ok(azure.args.includes("--read-only"));
+  // Azure MCP must use the `az login` identity, not whatever DefaultAzureCredential finds first.
+  assert.equal(azure.env?.AZURE_TOKEN_CREDENTIALS, "AzureCliCredential");
 });
 
 test("mcpAuth only hands out tokens for known origins", async () => {
@@ -111,6 +113,28 @@ test("normalizeRepo: URL, .git and slashes become owner/repo", () => {
   for (const s of ["https://github.com/o/r", "https://github.com/o/r.git", "http://www.github.com/o/r/", " o/r ", "o/r.git"]) {
     assert.equal(normalizeRepo(s), "o/r", s);
   }
+});
+
+test("azure: comma-separated subscriptions pair with workspaces by index; one subscription applies to all", async () => {
+  const saved = { s: process.env.AZURE_SUBSCRIPTION, w: process.env.AZURE_LOG_WORKSPACE };
+  try {
+    process.env.AZURE_SUBSCRIPTION = " s1 , s2 ,";
+    process.env.AZURE_LOG_WORKSPACE = "w1,w2";
+    assert.deepEqual((await loadConfig(root)).azure, { subscriptions: ["s1", "s2"], workspaces: ["w1", "w2"] });
+  } finally {
+    for (const [k, v] of [["AZURE_SUBSCRIPTION", saved.s], ["AZURE_LOG_WORKSPACE", saved.w]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+  const base = { ...(await loadConfig(root)), runtime: "copilot" as const };
+  const cloud = (subscriptions: string[], workspaces: string[]) =>
+    readerAgents({ ...base, azure: { subscriptions, workspaces } }).find((a) => a.name === "cloud-reader")!;
+  assert.match(cloud(["s1", "s2"], ["w1", "w2"]).task, /"w1" \(subscription s1\), "w2" \(subscription s2\)\./);
+  assert.match(cloud(["s1"], ["w1", "w2"]).task, /"w1" \(subscription s1\), "w2" \(subscription s1\)\./);
+  assert.equal(cloud(["s1"], ["w1", "w2"]).missingConfig, undefined);
+  assert.match(cloud(["s1", "s2"], ["w1"]).missingConfig!, /^Chưa cấu hình đúng AZURE_SUBSCRIPTION/);
+  assert.match(cloud([], ["w1"]).missingConfig!, /^Chưa cấu hình AZURE_SUBSCRIPTION \/ AZURE_LOG_WORKSPACE/);
 });
 
 test("audit goes to AGENTHUB_LOG_DIR (temp dir under pnpm test), never logs/", () => {

@@ -40,6 +40,11 @@ const HINTS: { re: RegExp; text: string; blocking: boolean }[] = [
     blocking: false,
     text: "Model gọi sai lệnh/tham số Azure MCP. Nếu lặp lại: sửa task `cloud-reader` trong agents.ts (danh sách lệnh ở docs/mcp-tools.md).",
   },
+  {
+    re: /InsufficientAccessError|Could not find workspace/,
+    blocking: true,
+    text: "Azure MCP dùng tài khoản `az login` (AzureCliCredential): kiểm tra `az account show` là đúng tài khoản và tài khoản đó có quyền Reader trên workspace.",
+  },
   { re: /BadArgumentError/, blocking: false, text: "KQL sai tên bảng/cột. Nếu lặp lại: ghi tên bảng đúng vào task `cloud-reader`." },
   { re: /«SELECT»|Expecting constant value/, blocking: false, text: "WIQL không có subquery: dùng `[System.Id] IN (@Follows)` hoặc `wit_work_item` action `my` (task `board-reader`)." },
 ];

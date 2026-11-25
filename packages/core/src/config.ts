@@ -18,7 +18,8 @@ export interface HubConfig {
   scenario: string;
   ado: { org: string; project: string };
   github: { repos: string[] };
-  azure: { subscription: string; workspace: string };
+  /** Paired by index; a single subscription applies to every workspace. */
+  azure: { subscriptions: string[]; workspaces: string[] };
   byok: { baseUrl: string; apiKey: string };
 }
 
@@ -29,6 +30,7 @@ export async function loadConfig(root = findRoot()): Promise<HubConfig> {
   const file = path.join(root, "agenthub.config.ts");
   const user: UserConfig = existsSync(file) ? (await import(pathToFileURL(file).href)).default : {};
   const env = process.env;
+  const list = (v: string | undefined) => v?.split(",").map((s) => s.trim()).filter(Boolean);
   const runtime = (env.AGENTHUB_RUNTIME ?? user.runtime ?? "mock") as RuntimeKind;
   if (!["mock", "byok", "copilot"].includes(runtime)) throw new Error(`AGENTHUB_RUNTIME không hợp lệ: ${runtime}`);
   return {
@@ -44,8 +46,8 @@ export async function loadConfig(root = findRoot()): Promise<HubConfig> {
     },
     github: { repos: (env.GITHUB_REPOS?.split(",") ?? user.github?.repos ?? []).map(normalizeRepo).filter(Boolean) },
     azure: {
-      subscription: env.AZURE_SUBSCRIPTION ?? user.azure?.subscription ?? "",
-      workspace: env.AZURE_LOG_WORKSPACE ?? user.azure?.workspace ?? "",
+      subscriptions: list(env.AZURE_SUBSCRIPTION) ?? user.azure?.subscriptions ?? [],
+      workspaces: list(env.AZURE_LOG_WORKSPACE) ?? user.azure?.workspaces ?? [],
     },
     byok: {
       baseUrl: env.BYOK_BASE_URL ?? "https://api.anthropic.com",

@@ -53,7 +53,7 @@ Chạy lần lượt. Mỗi lệnh đặt `maxAiCredits: 30` (mức tối thiể
 | GitHub | `pnpm smoke code-reader` | `.env`: `GITHUB_MCP_TOKEN` = `gh auth token` (thử cả để trống, xem Copilot có tự auth không), `GITHUB_REPOS` |
 | Azure DevOps | `pnpm smoke board-reader` | `.env`: `ADO_ORG`, `ADO_PROJECT`. Lần đầu có thể mở trình duyệt đăng nhập Entra |
 | Outlook/Teams | `pnpm smoke comms-reader` | Chạy trước 1 lần: `npx -y @microsoft/workiq accept-eula`. Có thể hiện màn hình xin **admin consent** |
-| Azure Monitor | `pnpm smoke cloud-reader` | `az login`; `.env`: `AZURE_SUBSCRIPTION`, `AZURE_LOG_WORKSPACE` |
+| Azure Monitor | `pnpm smoke cloud-reader` | `az login` (Azure MCP chạy với `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`, nên dùng đúng tài khoản `az account show`; tài khoản này cần quyền đọc workspace); `.env`: `AZURE_SUBSCRIPTION`, `AZURE_LOG_WORKSPACE` (cách nhau bằng dấu phẩy; 1 subscription cho mọi workspace, hoặc mỗi workspace một subscription cùng thứ tự) |
 
 Mỗi lệnh in mọi event SDK. Ghi vào step0-results.md: thành công/thất bại, **tên event và mã lỗi**,
 không chép nội dung trả về.

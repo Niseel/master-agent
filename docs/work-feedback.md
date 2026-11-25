@@ -113,3 +113,89 @@ Mẫu mỗi mục:
   - Mock: từ chối tham số lạ với thông điệp thật, thêm `monitor_table_list`, thêm fixture `BadArgumentError`.
   - `report.ts`: thêm HINT cho "Chưa cấu hình" (trỏ `.env`/WORK.md) và cho `unknown arguments`/`BadArgumentError`.
 - Ghi chú: lỗi WIQL subquery của board-reader lặp lại (xem mục ado ở trên).
+
+## 2026-11-25 (lần 3) — azure (cloud-reader), sau task mới của Home
+- Thấy: 8 lần `monitor` (trước 15), 47.6s (trước ~59s). Không còn `unknown arguments` / `not available`.
+  Mọi lần gọi `monitor` có đủ `{command, intent, parameters}`.
+- Thấy: trình tự thật: `monitor_workspace_list` → `group_list` → `monitor_table_list` ×2 → `group_resource_list` ×2
+  → 3 `monitor_workspace_log_query` song song `{subscription, workspace, table, query, hours:24}` (đúng, không có
+  `resource-group`) → 2 lần thử lại thành công.
+- Thấy: `AZURE_LOG_WORKSPACE` chứa 2 tên workspace cách nhau bằng dấu phẩy. Model tự tách và truy vấn cả hai.
+  Config chỉ là `string`; task ghi nguyên chuỗi vào `"..."`.
+- Thấy: lỗi thật (đã bỏ định danh):
+  - `{"status":400,"message":"The request had some invalid properties\r\nStatus: 400 (Bad Request)\r\nErrorCode: BadArgumentError ...`
+    với lỗi con `SyntaxError` mã `SYN0002` `Query could not be parsed at 'last'`. Nguyên nhân: model đặt tên cột
+    `last` trong `summarize` (`last=max(TimeGenerated)`); `last` là từ khoá KQL, không dùng làm tên cột được.
+  - `{"status":403,"message":"The provided credentials have insufficient access to perform the requested operation\r\nSt...`
+    `ErrorCode: InsufficientAccessError`. Gặp ở workspace thứ hai (tài khoản thiếu quyền đọc), không phải lỗi tham số.
+    Model không thử lại.
+- Thấy: model gọi `group_resource_list` nhưng **không gọi `monitor_activitylog_list`**: activity log bị bỏ qua.
+- Thấy: báo cáo không có item nào nhắc lại lỗi tool (3 item Azure). Agent không bị tính là lỗi (đúng `summarize`).
+- Đã sửa ở Work (chỉ chuỗi `task`): không dùng từ khoá KQL (ví dụ `last`) làm tên cột, dùng `lastSeen`;
+  luôn gọi `monitor_activitylog_list` kể cả khi log query lỗi; 403 `InsufficientAccessError` là thiếu quyền, không thử lại.
+- Mock đang giả định: KQL sai chỉ khi không bắt đầu bằng tên bảng; mọi workspace đều đọc được.
+- Đề xuất:
+  - Mock: `monitor_workspace_log_query` trả `BadArgumentError` kèm `SYN0002` khi query có `last=` (hoặc
+    `, last =`); thêm 1 workspace trong fixture trả 403 `InsufficientAccessError`.
+  - `report.ts`: gợi ý cho `InsufficientAccessError` (cần quyền đọc Log Analytics trên workspace, ví dụ role
+    Log Analytics Reader). Không coi là lỗi chặn nếu workspace khác vẫn đọc được.
+  - Tuỳ chọn: `azure.workspace` nhận danh sách (tách theo dấu phẩy) và ghi rõ từng workspace trong task.
+
+## 2026-11-25 (lần 3) — ado (board-reader)
+- Thấy: hết lỗi WIQL `«SELECT»`. 2 lần `wit_query` `{action:"wiql", project, wiql}` (không có `top`): một câu
+  dùng `@Me`, một câu dùng `@Follows`, không có subquery. Giữ được điều kiện "đang theo dõi".
+- Thấy: sau đó `wit_work_item` `get_batch` ×1 `{action, ids, project}` và `list_revisions` ×4
+  `{action, project, workItemId, top, skip?, expand?}`. Không dùng `action:"my"`.
+- Thấy: board-reader chậm nhất (76.4s), trong đó có 4 lần `list_revisions`.
+- Đề xuất: mock `list_revisions` nhận thêm `skip`, `expand` (tuỳ chọn).
+
+## 2026-11-25 (lần 4) — azure (cloud-reader), sau khi Work sửa task
+- Thấy: 4/4 agent ok, 7 mục, 46.5s, 39.29/120 AI Credits. cloud-reader 45.5s (lần 3: 47.6s).
+- Thấy: trình tự thật (10 lần gọi, tất cả `allow`): `monitor_workspace_list` → `group_list` →
+  `monitor_table_list` ×1 `{subscription, resource-group, workspace}` → `group_resource_list` ×2 →
+  `monitor_workspace_log_query` ×3 `{subscription, workspace, table, query, hours}` → `monitor_activitylog_list` ×2
+  `{subscription, resource-group, resource-name, hours}`. Không gọi `learn`.
+- Thấy: task mới có tác dụng:
+  - Query dùng `lastSeen=max(TimeGenerated)`, bắt đầu bằng tên bảng, không dùng `ago()`. Hết `SYN0002`.
+  - `log_query` không có `resource-group`.
+  - `monitor_activitylog_list` được gọi (có `resource-name` lấy từ `group_resource_list`), kể cả sau khi log query lỗi.
+- Thấy: lỗi thật duy nhất (đã bỏ định danh), ở workspace thứ hai:
+  `{"status":404,"message":"Could not find workspace with name <name>. To mitigate this issue, please ref...`
+  Cùng subscription, cùng tên workspace, cùng khoá tham số như lần 3, nhưng lần 3 trả 403
+  `InsufficientAccessError`. Model gọi workspace này 1 lần, không thử lại, chuyển sang activity log.
+  Kết luận: tài khoản Work không đọc được workspace thứ hai; lỗi có thể là 403 hoặc 404 tuỳ lần.
+  **Kết luận này sai, xem mục "chẩn đoán workspace thứ hai" bên dưới.**
+- Thấy: báo cáo không item nào nhắc lại lỗi 404.
+- Mock đang giả định: mọi tên workspace trong config đều tìm thấy được.
+- Đề xuất:
+  - Mock: thêm 1 workspace trong fixture trả 404 `Could not find workspace with name <name>` (cùng chỗ với
+    workspace 403 đã đề xuất ở lần 3).
+  - `report.ts`: gợi ý chung cho 403/404 trên workspace: kiểm tra tên, subscription/resource group và quyền đọc
+    (ví dụ Log Analytics Reader), hoặc bỏ workspace khỏi `AZURE_LOG_WORKSPACE`.
+  - Tuỳ chọn: câu "403 ... không thử lại" trong task `cloud-reader` mở rộng thành "403/404".
+
+## 2026-11-25 (lần 4) — ado (board-reader)
+- Thấy: 22.0s (lần 3: 76.4s). 6 lần gọi, tất cả `allow`: `wit_query` ×2 `{action:"wiql", project, wiql}`
+  (một câu `@Me`, một câu `@Follows`, không subquery), `wit_work_item` `list_revisions` ×2
+  `{action, workItemId, project, top, skip}`, `wit_work_item` `action:"list_comments"` ×2
+  `{action, workItemId, project, top}`.
+- Mock đang giả định: `wit_work_item.action` chỉ nhận `get`, `get_batch`, `list_revisions`, `my`.
+- Đề xuất: mock `wit_work_item` thêm `action:"list_comments"` `{workItemId, project, top?}` trả vài bình luận tự tạo.
+
+## 2026-11-25 — chẩn đoán workspace thứ hai (403 lần 3, 404 lần 4)
+- Thấy: cả hai workspace trong `AZURE_LOG_WORKSPACE` cùng một subscription, khác resource group. Tham số model
+  gửi là đúng (đúng subscription, đúng tên). Không phải do thiếu subscription thứ hai.
+- Thấy: `az` CLI và REST (token của `az account get-access-token`) liệt kê và truy vấn được cả hai workspace.
+- Thấy: chạy `@azure/mcp` (4.0.0-beta.10) trực tiếp, credential mặc định (chuỗi DefaultAzureCredential):
+  `monitor workspace list` trả 2 workspace, **không có** workspace thứ hai; `log query` trên nó trả 404.
+  Chuỗi credential mặc định chọn một danh tính khác với tài khoản `az login`.
+- Thấy: cùng lệnh với env `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`: `workspace list` trả 4 workspace (có cả
+  hai), `log query` trên workspace thứ hai trả 200.
+- Thấy: `server start` không có cờ chọn credential; chỉ có env `AZURE_TOKEN_CREDENTIALS`.
+- Thấy: `MCPStdioServerConfig.env` được Copilot CLI **gộp** với env kế thừa (kiểm bằng MCP server giả, không gọi
+  model): PATH, biến của tiến trình cha và biến trong `env` đều có.
+- Đã sửa ở Work: server `azure` (cloud-reader, runtime thật) có `env: { AZURE_TOKEN_CREDENTIALS: "AzureCliCredential" }`.
+  Đổi danh tính, không đổi tool; vẫn `--read-only`. Test trong `security.test.ts`. `report.ts` có gợi ý cho
+  `InsufficientAccessError` / `Could not find workspace` (kiểm tra tài khoản `az login` và quyền Reader).
+- Mock đang giả định: mọi workspace đều đọc được; server mock không quan tâm `env`.
+- Đề xuất: mock trả 403/404 cho 1 workspace fixture (như lần 3/4) để test gợi ý mới end-to-end.

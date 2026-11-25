@@ -222,7 +222,14 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] [Work] Ghi tên tham số + giá trị `action` thật (từ `args` trong audit log) để mock khớp schema thật. Xem docs/WORK.md mục 4. — 2026-11-25: xem work-feedback.md.
 - [x] [Work] `pnpm brief` runtime `copilot` (2026-11-25): 4 agent ok, 60.5s, 44.29/120 AI Credits, không tool ghi nào được gọi.
 - [x] [Home] Theo work-feedback 2026-11-25 (xong 2026-11-25): mock workiq `fetch` dùng `entityUrls`; mock azure từ chối tham số lạ + thêm `monitor_table_list` + fixture `BadArgumentError`; mock ado lỗi WIQL subquery; viết lại task `cloud-reader`/`board-reader`; gợi ý lỗi azure/WIQL trong `report.ts`; test ghi audit vào thư mục tạm.
-- [ ] [Work] Chạy lại `pnpm brief` runtime `copilot` sau khi đổi task: so số lần gọi `monitor` và thời gian của `cloud-reader` (trước: 15 lần, ~59s); kiểm tra board-reader không còn lỗi WIQL subquery.
+- [x] [Work] Chạy lại `pnpm brief` runtime `copilot` sau khi đổi task: so số lần gọi `monitor` và thời gian của `cloud-reader` (trước: 15 lần, ~59s); kiểm tra board-reader không còn lỗi WIQL subquery. — 2026-11-25 lần 3: `monitor` 8 lần, 47.6s; hết lỗi WIQL; 39.25/120 AI Credits. Còn: KQL `last`, 403 workspace, bỏ qua activity log (work-feedback).
+- [ ] [Home] Theo work-feedback 2026-11-25 (lần 3): mock azure lỗi `SYN0002` khi KQL dùng từ khoá làm tên cột, lỗi 403 `InsufficientAccessError`; gợi ý trong `report.ts`; xem handoff-claude.md §3.
+- [x] [Work] Chạy lại `pnpm brief` runtime `copilot` sau khi sửa task `cloud-reader` (lần 3): không còn `BadArgumentError` do `last`, có gọi `monitor_activitylog_list`, 403 không bị thử lại. — 2026-11-25 lần 4: hết `SYN0002`, `monitor_activitylog_list` ×2, cloud-reader 45.5s, 39.29/120 AI Credits. Workspace thứ hai lần này trả 404 (lần 3: 403), không thử lại. (Nguyên nhân: credential của Azure MCP, xem dưới.)
+- [ ] [Home] Theo work-feedback 2026-11-25 (lần 4): mock azure lỗi 404 `Could not find workspace with name ...`; mock ado `wit_work_item` `action:"list_comments"`; xem handoff-claude.md §3.
+- [x] [Work] `AZURE_SUBSCRIPTION`/`AZURE_LOG_WORKSPACE` nhận nhiều giá trị (dấu phẩy), ghép theo thứ tự; 1 subscription dùng cho mọi workspace. Config: `azure.subscriptions[]`, `azure.workspaces[]`.
+- [x] [Work] Nguyên nhân 403/404 ở workspace thứ hai: không phải subscription khác (cùng subscription, khác resource group). Azure MCP dùng DefaultAzureCredential, chọn danh tính khác `az login`. Sửa: server `azure` chạy với env `AZURE_TOKEN_CREDENTIALS=AzureCliCredential` (kiểm trực tiếp: thấy đủ workspace, query 200). `report.ts` có gợi ý cho 403/404 workspace.
+- [ ] [Work] Chạy lại `pnpm brief` runtime `copilot` (~39 AI Credits) để xác nhận workspace thứ hai đọc được qua agent.
+- [ ] [Work] Tuỳ chọn: ghim phiên bản `@azure/mcp` (đang `@latest` = 4.0.0-beta.10).
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 

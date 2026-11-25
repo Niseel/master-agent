@@ -13,5 +13,6 @@ export default {
   timeoutMs: 150_000,
   ado: { org: "", project: "" },
   github: { repos: [] },
-  azure: { subscription: "", workspace: "" },
+  // Paired by index; one subscription applies to every workspace.
+  azure: { subscriptions: [], workspaces: [] },
 } satisfies UserConfig;

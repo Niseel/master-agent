@@ -92,6 +92,10 @@ function mockServer(cfg: HubConfig, name: "workiq" | "ado" | "azure"): MCPServer
 export function readerAgents(cfg: HubConfig): AgentSpec[] {
   const real = cfg.runtime === "copilot";
   const ghToken = process.env.GITHUB_MCP_TOKEN;
+  const { subscriptions: subs, workspaces } = cfg.azure;
+  const azureTargets = workspaces
+    .map((w, i) => `"${w}" (subscription ${subs.length === 1 ? subs[0] : subs[i]})`)
+    .join(", ");
 
   return [
     {
@@ -166,30 +170,40 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       // Command names and params from docs/mcp-tools.md + docs/work-feedback.md (2026-11-25). The server has
       // no "list alerts" command. Spelling the chain out cut the trial-and-error calls seen at Work.
       task:
-        `Workspace Log Analytics "${cfg.azure.workspace}" (subscription ${cfg.azure.subscription}). ` +
+        `Workspace Log Analytics: ${azureTargets}. Mỗi workspace dùng đúng subscription ghi kèm trong mọi lệnh. ` +
         "Liệt kê lỗi nổi bật trong 24h qua (source=azure): exception/request lỗi trong Log Analytics và thao tác lỗi trong activity log. " +
         "Tool `monitor`: `command` là tên đầy đủ có tiền tố `monitor_`, tham số đặt trong `parameters`. Trình tự: " +
-        "`monitor_workspace_list` {subscription} lấy resource group của workspace → " +
+        "`monitor_workspace_list` {subscription} (mỗi subscription một lần) lấy resource group của workspace → " +
         "`monitor_table_list` {subscription, resource-group, workspace} xem bảng có dữ liệu → " +
         "`monitor_workspace_log_query` {subscription, workspace, table, query, hours: 24} (KHÔNG truyền resource-group; " +
-        "query bắt đầu bằng tên bảng có thật) → " +
+        "query bắt đầu bằng tên bảng có thật; `hours` đã lọc thời gian; không dùng từ khoá KQL (ví dụ `last`) " +
+        "làm tên cột, viết `lastSeen=max(TimeGenerated)`) → " +
         "`monitor_activitylog_list` {subscription, resource-group, resource-name, hours: 24} (bắt buộc resource-name; " +
-        "lấy tên resource từ `group_resource_list`). Không chắc tham số thì gọi `monitor` với learn: true một lần.",
+        "lấy tên resource từ `group_resource_list`; luôn gọi bước này, kể cả khi log query lỗi). " +
+        "Lỗi 403 `InsufficientAccessError` là thiếu quyền trên workspace đó: không thử lại, chuyển sang workspace/bước khác. " +
+        "Không chắc tham số thì gọi `monitor` với learn: true một lần.",
       mcpServers: {
+        // Found at Work 2026-11-25: Azure MCP's default credential chain signed in as another identity that
+        // could not see one workspace (403/404, while `az` saw it). Pin it to the `az login` account.
+        // `env` is merged with the inherited env (checked at Work).
         azure: real
           ? {
               type: "stdio",
               ...npx(["-y", "@azure/mcp@latest", "server", "start", "--namespace", "monitor", "--read-only"]),
+              env: { AZURE_TOKEN_CREDENTIALS: "AzureCliCredential" },
               tools: ["*"],
               timeout: 90_000,
             }
           : mockServer(cfg, "azure"),
       },
       readTools: AZURE_READ,
-      missingConfig:
-        real && !(cfg.azure.subscription && cfg.azure.workspace)
+      missingConfig: !real
+        ? undefined
+        : !(subs.length && workspaces.length)
           ? "Chưa cấu hình AZURE_SUBSCRIPTION / AZURE_LOG_WORKSPACE"
-          : undefined,
+          : subs.length > 1 && subs.length !== workspaces.length
+            ? "Chưa cấu hình đúng AZURE_SUBSCRIPTION: 1 giá trị cho mọi workspace, hoặc mỗi workspace trong AZURE_LOG_WORKSPACE một giá trị, cùng thứ tự"
+            : undefined,
     },
   ];
 }

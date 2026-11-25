@@ -117,9 +117,12 @@ test("summarize: retried model errors are not failures; blocking errors drop the
 test("report hints: config and model mistakes", () => {
   for (const [error, want] of [
     ["Chưa cấu hình AZURE_SUBSCRIPTION / AZURE_LOG_WORKSPACE", ".env"],
+    ["Chưa cấu hình đúng AZURE_SUBSCRIPTION: 1 giá trị cho mọi workspace", ".env"],
     ["Request rejected due to unknown arguments: resource-group", "cloud-reader"],
     ['{"status":400} ErrorCode: BadArgumentError', "KQL"],
     ["Expecting constant value. The error is caused by «SELECT».", "@Follows"],
+    ['{"status":403} InsufficientAccessError', "az login"],
+    ["Could not find workspace 'w2'", "az login"],
   ]) assert.ok(hint(error)?.includes(want), error);
   assert.equal(isBlocking("Request rejected due to unknown arguments: x"), false);
   assert.equal(isBlocking("VS30063: You are not authorized"), true);
