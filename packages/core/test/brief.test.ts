@@ -103,7 +103,13 @@ test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are re
 test("summarize: retried model errors are not failures; blocking errors drop the agent's items", async () => {
   const ok = summarize(await run("brief-ok"));
   assert.equal(ok.items.length, 10);
-  assert.deepEqual(ok.failures, {}, "unknown arguments / WIQL errors were retried");
+  assert.deepEqual(ok.failures, {}, "unknown arguments / WIQL / SYN0002 errors were retried");
+  // One Azure workspace unreadable (403): a warning, cloud-reader items from the other workspace stay.
+  assert.equal(ok.warnings?.length, 1);
+  assert.match(ok.warnings![0], /^cloud-reader: .*InsufficientAccessError/);
+  assert.ok(ok.items.some((i) => i.source === "azure"));
+  const html = renderReport({ date: "2026-11-25", runtime: "mock", maxAiCredits: 120, durationMs: 0, ...ok });
+  assert.ok(html.includes("<h2>Cảnh báo</h2>") && html.includes("Log Analytics Reader"));
 
   const auth = summarize(await run("brief-auth"));
   assert.deepEqual(Object.keys(auth.failures).sort(), ["board-reader", "comms-reader"]);
@@ -123,7 +129,9 @@ test("report hints: config and model mistakes", () => {
     ["Expecting constant value. The error is caused by «SELECT».", "@Follows"],
     ['{"status":403} InsufficientAccessError', "az login"],
     ["Could not find workspace 'w2'", "az login"],
+    ["ErrorCode: BadArgumentError Inner: SyntaxError SYN0002 Query could not be parsed at 'last'", "lastSeen"],
   ]) assert.ok(hint(error)?.includes(want), error);
   assert.equal(isBlocking("Request rejected due to unknown arguments: x"), false);
   assert.equal(isBlocking("VS30063: You are not authorized"), true);
+  assert.equal(isBlocking('{"status":403} InsufficientAccessError'), false, "one workspace must not drop the others");
 });

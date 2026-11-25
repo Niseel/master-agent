@@ -26,6 +26,12 @@
 {"event":{"type":"agent.completed","agent":"board-reader","durationMs":1500,"tokens":3100}}
 {"delayMs":50,"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway — 3 file, +120/-40.","priority":"medium","actionRequired":true,"suggestedAction":"Review","link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:28:00Z"},{"source":"github","title":"Workflow CI fail trên main","summary":"Job test-integration fail 2 lần liên tiếp.","priority":"high","actionRequired":true,"suggestedAction":"Xem log job","link":"https://github.com/me/orders/actions/runs/1","timestamp":"2026-11-23T02:10:00Z"}]}}
 {"event":{"type":"agent.completed","agent":"code-reader","durationMs":1600,"tokens":4000}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"c9"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c9","ok":false,"error":"{\"status\":400,\"message\":\"The request had some invalid properties\\r\\nStatus: 400 (Bad Request)\\r\\nErrorCode: BadArgumentError\\r\\nInner: SyntaxError SYN0002 Query could not be parsed at 'last'\"}"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"c10"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c10","ok":false,"error":"{\"status\":403,\"message\":\"The provided credentials have insufficient access to perform the requested operation\\r\\nStatus: 403 (Forbidden)\\r\\nErrorCode: InsufficientAccessError\"}"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"c11"}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c11","ok":true}}
 {"delayMs":50,"event":{"type":"agent.result","agent":"cloud-reader","items":[{"source":"azure","title":"Sev1: orders-api 5xx > 2%","summary":"214 lỗi timeout gọi payment-gateway từ 03:18. Có thể liên quan PR #87.","priority":"high","actionRequired":true,"suggestedAction":"Kiểm tra payment-gateway","link":"https://portal.azure.com/#alert/a1","timestamp":"2026-11-23T03:20:00Z"},{"source":"azure","title":"Retry storm trên queue orders-events","summary":"37 cảnh báo lúc 04:02.","priority":"medium","actionRequired":false,"suggestedAction":null,"link":null,"timestamp":"2026-11-23T04:02:00Z"}]}}
 {"event":{"type":"agent.completed","agent":"cloud-reader","durationMs":1700,"tokens":3500}}
 {"event":{"type":"usage","usedAiCredits":31.5,"maxAiCredits":120}}

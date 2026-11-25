@@ -71,7 +71,7 @@ if (kind === "workiq") {
   const data = load("ado");
   type WorkItem = { id: number };
   const byId = (id: number) => data.workItems.find((w: WorkItem) => w.id === id);
-  // Real ADO tools are grouped, with an `action` parameter. `wiql`, `get_batch`, `list_revisions`, `my` and
+  // Real ADO tools are grouped, with an `action` parameter. `wiql`, `get_batch`, `list_revisions`, `list_comments`, `my` and
   // their params were seen at Work (2026-11-25); `get`/`get_results` are from the descriptions.
   server.registerTool(
     "wit_query",
@@ -97,9 +97,9 @@ if (kind === "workiq") {
   server.registerTool(
     "wit_work_item",
     {
-      description: "Read operations on work items. Use 'action': 'get', 'get_batch', 'list_revisions', 'my'",
+      description: "Read operations on work items. Use 'action': 'get', 'get_batch', 'list_revisions', 'list_comments', 'my'",
       inputSchema: {
-        action: z.enum(["get", "get_batch", "list_revisions", "my"]),
+        action: z.enum(["get", "get_batch", "list_revisions", "list_comments", "my"]),
         project: z.string().optional(),
         id: z.number().optional(),
         ids: z.array(z.number()).optional(),
@@ -107,6 +107,8 @@ if (kind === "workiq") {
         workItemId: z.number().optional(),
         type: z.string().optional(),
         top: z.number().optional(),
+        skip: z.number().optional(),
+        expand: z.string().optional(),
       },
       annotations: readOnly,
     },
@@ -115,6 +117,7 @@ if (kind === "workiq") {
       if (action === "my") return json(data.workItems);
       const w = byId((action === "get" ? id : workItemId) ?? -1);
       if (!w) return fail(`Work item ${id ?? workItemId} not found`);
+      if (action === "list_comments") return json(data.comments.filter((c: { workItemId: number }) => c.workItemId === w.id));
       return json(action === "get" ? w : [{ rev: 2, changedBy: w.changedBy, changedDate: w.changedDate, change: w.change }]);
     },
   );
@@ -166,10 +169,17 @@ if (kind === "workiq") {
       required: ["workspace", "query", "table"],
       optional: ["hours", "limit"],
       run: (p) => {
-        // ponytail: "valid KQL" = starts with a known table name.
-        const table = String(p.query).trim().split(/[\s|]/)[0];
+        // ponytail: "valid KQL" = starts with a known table name and does not name a column `last`.
+        const query = String(p.query);
+        const table = query.trim().split(/[\s|]/)[0];
         if (!data.tables.includes(table)) {
           throw new Error(`{"status":400,"message":"Failed to resolve table or column expression named '${table}'"} ErrorCode: BadArgumentError`);
+        }
+        if (/(^|[\s,(])last\s*=/.test(query)) {
+          throw new Error(
+            `{"status":400,"message":"The request had some invalid properties\r\nStatus: 400 (Bad Request)\r\nErrorCode: BadArgumentError` +
+              `\r\nInner: SyntaxError SYN0002 Query could not be parsed at 'last'"}`,
+          );
         }
         return data.logs;
       },
@@ -198,6 +208,15 @@ if (kind === "workiq") {
       if (unknown.length) return fail(`Request rejected due to unknown arguments: ${unknown.join(", ")}`);
       const missing = cmd.required.filter((p) => parameters[p] === undefined);
       if (missing.length) return fail(`Missing Required options: ${missing.map((p) => `--${p}`).join(", ")}`);
+      // Real cause at Work: the server's identity could not see the workspace (403 one run, 404 the next).
+      // ponytail: message tails after "\r\nSt..." / "please ref..." were truncated in the feedback; reconstructed.
+      const denied = data.inaccessibleWorkspaces.find((w: { name: string }) => w.name === parameters.workspace);
+      if (denied?.status === 403) {
+        return fail(`{"status":403,"message":"The provided credentials have insufficient access to perform the requested operation\r\nStatus: 403 (Forbidden)\r\nErrorCode: InsufficientAccessError"}`);
+      }
+      if (denied?.status === 404) {
+        return fail(`{"status":404,"message":"Could not find workspace with name ${denied.name}. To mitigate this issue, please refer to the troubleshooting guide."}`);
+      }
       try {
         return json(cmd.run(parameters));
       } catch (e) {

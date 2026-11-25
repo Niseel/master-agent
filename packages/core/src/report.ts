@@ -7,6 +7,8 @@ export interface BriefReport {
   items: BriefItem[];
   /** Agents that failed (or whose tools failed with a known cause): agent name -> reason. */
   failures: Record<string, string>;
+  /** Partial read failures (e.g. one Azure workspace): "agent: error". The agent's items are kept. */
+  warnings?: string[];
   /** Tool calls the gate denied: "agent: reason". */
   blocked?: string[];
   usedAiCredits: number;
@@ -26,41 +28,48 @@ const PRIORITY_LABEL = { high: "Cao", medium: "Vừa", low: "Thấp" } as const;
 
 /**
  * Known failure causes -> what the user should do. Agents never fix these themselves.
- * `blocking`: the source is unusable until the user acts (auth, EULA, config). Other errors are model
- * mistakes the model usually retries past, so they only show when the agent fails with them.
+ * - `blocking`: the source is unusable until the user acts (auth, EULA, config): the agent counts as failed
+ *   and its items are dropped (they only restate the error, seen at Work with EULA).
+ * - `warning`: part of a source is unreadable (one Azure workspace) while the rest still works: shown under
+ *   "Cảnh báo", items kept.
+ * - `retry`: model mistakes it usually retries past; shown only when the agent fails with them.
  */
-const HINTS: { re: RegExp; text: string; blocking: boolean }[] = [
-  { re: /EULA/i, blocking: true, text: "Tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal (agent không được gọi accept_eula)." },
-  { re: /AADSTS65001/, blocking: true, text: "Work IQ cần admin consent: hỏi IT." },
-  { re: /VS30063/, blocking: true, text: "Tài khoản `az` không thuộc org ADO: `az login` đúng tài khoản, hoặc đặt ADO_AZURE_CONFIG_DIR (đường dẫn tuyệt đối) trong .env." },
-  { re: /^Chưa cấu hình/, blocking: true, text: "Đặt biến còn thiếu trong `.env` (mẫu: `.env.example`, hướng dẫn: docs/WORK.md)." },
-  { re: /ngân sách|limits_exhausted/i, blocking: true, text: "Tăng AGENTHUB_MAX_AI_CREDITS nếu cần (tối thiểu 30 mỗi agent)." },
-  {
-    re: /unknown arguments|Missing Required options|is not available for the 'monitor' tool/,
-    blocking: false,
-    text: "Model gọi sai lệnh/tham số Azure MCP. Nếu lặp lại: sửa task `cloud-reader` trong agents.ts (danh sách lệnh ở docs/mcp-tools.md).",
-  },
+type HintKind = "blocking" | "warning" | "retry";
+const HINTS: { re: RegExp; kind: HintKind; text: string }[] = [
+  { re: /EULA/i, kind: "blocking", text: "Tự chạy `npx -y @microsoft/workiq accept-eula` trong terminal (agent không được gọi accept_eula)." },
+  { re: /AADSTS65001/, kind: "blocking", text: "Work IQ cần admin consent: hỏi IT." },
+  { re: /VS30063/, kind: "blocking", text: "Tài khoản `az` không thuộc org ADO: `az login` đúng tài khoản, hoặc đặt ADO_AZURE_CONFIG_DIR (đường dẫn tuyệt đối) trong .env." },
+  { re: /^Chưa cấu hình/, kind: "blocking", text: "Đặt biến còn thiếu trong `.env` (mẫu: `.env.example`, hướng dẫn: docs/WORK.md)." },
+  { re: /ngân sách|limits_exhausted/i, kind: "blocking", text: "Tăng AGENTHUB_MAX_AI_CREDITS nếu cần (tối thiểu 30 mỗi agent)." },
   {
     re: /InsufficientAccessError|Could not find workspace/,
-    blocking: true,
-    text: "Azure MCP dùng tài khoản `az login` (AzureCliCredential): kiểm tra `az account show` là đúng tài khoản và tài khoản đó có quyền Reader trên workspace.",
+    kind: "warning",
+    text:
+      "Không đọc được 1 workspace. Azure MCP dùng tài khoản `az login` (AzureCliCredential): kiểm tra `az account show`, " +
+      "tên workspace / subscription trong .env và quyền đọc (ví dụ Log Analytics Reader), hoặc bỏ workspace khỏi AZURE_LOG_WORKSPACE.",
   },
-  { re: /BadArgumentError/, blocking: false, text: "KQL sai tên bảng/cột. Nếu lặp lại: ghi tên bảng đúng vào task `cloud-reader`." },
-  { re: /«SELECT»|Expecting constant value/, blocking: false, text: "WIQL không có subquery: dùng `[System.Id] IN (@Follows)` hoặc `wit_work_item` action `my` (task `board-reader`)." },
+  {
+    re: /unknown arguments|Missing Required options|is not available for the 'monitor' tool/,
+    kind: "retry",
+    text: "Model gọi sai lệnh/tham số Azure MCP. Nếu lặp lại: sửa task `cloud-reader` trong agents.ts (danh sách lệnh ở docs/mcp-tools.md).",
+  },
+  { re: /SYN0002/, kind: "retry", text: "KQL dùng từ khoá (ví dụ `last`) làm tên cột. Nếu lặp lại: nhắc tên cột khác (`lastSeen`) trong task `cloud-reader`." },
+  { re: /BadArgumentError/, kind: "retry", text: "KQL sai tên bảng/cột. Nếu lặp lại: ghi tên bảng đúng vào task `cloud-reader`." },
+  { re: /«SELECT»|Expecting constant value/, kind: "retry", text: "WIQL không có subquery: dùng `[System.Id] IN (@Follows)` hoặc `wit_work_item` action `my` (task `board-reader`)." },
 ];
 const findHint = (error: string) => HINTS.find(({ re }) => re.test(error));
 export const hint = (error: string) => findHint(error)?.text ?? null;
-export const isBlocking = (error: string) => findHint(error)?.blocking ?? false;
+export const isBlocking = (error: string) => findHint(error)?.kind === "blocking";
 
 /**
- * Run events -> report data. A blocking tool error marks the agent failed even if it "completed", and drops
- * its items: they only restate the error (seen at Work with EULA).
- * ponytail: drops ALL items of that agent; filter per item if a source can be partly blocked.
+ * Run events -> report data, using the hint kinds above.
+ * ponytail: a blocking error drops ALL items of that agent; filter per item if a source can be partly blocked.
  */
-export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "failures" | "blocked" | "usedAiCredits"> {
+export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "failures" | "warnings" | "blocked" | "usedAiCredits"> {
   const callAgent = new Map<string, string>();
   const itemsBy: Record<string, BriefItem[]> = {};
   const failures: Record<string, string> = {};
+  const warnings: string[] = [];
   const blocked: string[] = [];
   const usedBy: Record<string, number> = {};
   let usedTotal = 0;
@@ -68,7 +77,9 @@ export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "fail
     if (ev.type === "tool.started") callAgent.set(ev.callId, ev.agent);
     else if (ev.type === "tool.completed") {
       const agent = callAgent.get(ev.callId);
-      if (agent && ev.error && isBlocking(ev.error)) failures[agent] ??= `Tool lỗi: ${ev.error}`;
+      const kind = ev.error && findHint(ev.error)?.kind;
+      if (agent && kind === "blocking") failures[agent] ??= `Tool lỗi: ${ev.error}`;
+      if (agent && kind === "warning") warnings.push(`${agent}: ${ev.error}`);
     } else if (ev.type === "agent.result") (itemsBy[ev.agent] ??= []).push(...ev.items);
     else if (ev.type === "agent.failed") failures[ev.agent] = ev.error;
     else if (ev.type === "message" && ev.text.startsWith("Bị chặn")) blocked.push(`${ev.agent}: ${ev.text}`);
@@ -79,7 +90,7 @@ export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "fail
   }
   const items = Object.entries(itemsBy).flatMap(([agent, items]) => (failures[agent] ? [] : items));
   const usedAiCredits = Math.max(usedTotal, Object.values(usedBy).reduce((a, b) => a + b, 0));
-  return { items, failures, blocked, usedAiCredits };
+  return { items, failures, warnings: [...new Set(warnings)], blocked, usedAiCredits };
 }
 
 const esc = (s: string) =>
@@ -125,11 +136,13 @@ main{max-width:880px;margin:0 auto;padding:24px 16px 48px}h1{font-size:24px;marg
 .title{font-weight:600;margin-top:4px}.title a{color:var(--accent);text-decoration:none}.title a:hover{text-decoration:underline}
 p{margin:4px 0 0}.action{font-weight:500}
 .fail{background:var(--fail-bg);color:var(--fail);border-radius:8px;padding:10px 14px}
+.warn{background:var(--medium-bg);color:var(--fg);border-radius:8px;padding:10px 14px;overflow-wrap:anywhere}
 footer{margin-top:32px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
 </style></head><body><main>
 <h1>Check việc — ${esc(r.date)}</h1>
-<p class="sub">${r.items.length} mục · ${action.length} cần bạn xử lý${failures.length ? ` · ${failures.length} nguồn lỗi` : ""}</p>
+<p class="sub">${r.items.length} mục · ${action.length} cần bạn xử lý${failures.length ? ` · ${failures.length} nguồn lỗi` : ""}${r.warnings?.length ? ` · ${r.warnings.length} cảnh báo` : ""}</p>
 ${failures.length ? `<h2>Không lấy được</h2><ul>${failures.map(([a, e]) => `<li class="fail"><b>${esc(a)}</b>: ${esc(e)}${hint(e) ? `<p class="action">→ ${esc(hint(e)!)}</p>` : ""}</li>`).join("")}</ul>` : ""}
+${r.warnings?.length ? `<h2>Cảnh báo</h2><ul>${r.warnings.map((w) => `<li class="warn">${esc(w)}${hint(w) ? `<p class="action">→ ${esc(hint(w)!)}</p>` : ""}</li>`).join("")}</ul>` : ""}
 ${action.length ? `<h2>Cần bạn xử lý</h2>${list(action)}` : ""}
 ${bySource.map(([s, items]) => `<h2>${SOURCE_LABEL[s as BriefItem["source"]]}</h2>${list(items)}`).join("\n")}
 ${r.blocked?.length ? `<h2>Đã chặn</h2><ul>${r.blocked.map((b) => `<li class="item low">${esc(b)}</li>`).join("")}</ul>` : ""}

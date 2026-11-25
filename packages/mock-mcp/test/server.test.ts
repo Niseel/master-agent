@@ -70,6 +70,15 @@ test("mock errors match real servers", async () => {
     assert.equal((await monitor("monitor_table_list", { "resource-group": "rg-orders", workspace: "law-orders" }))[0], false);
     assert.deepEqual(await monitor("monitor_activitylog_list", { "resource-group": "rg-orders" }), [true, "Missing Required options: --resource-name"]);
     assert.match((await call(azure, "monitor", { intent: "t", command: "workspace_list" }))[1], /is not available for the 'monitor' tool/);
+    const syn = await monitor("monitor_workspace_log_query", { ...q, query: "AppExceptions | summarize last=max(TimeGenerated)" });
+    assert.ok(syn[0] && /BadArgumentError/.test(syn[1]) && /SYN0002/.test(syn[1]));
+    assert.equal((await monitor("monitor_workspace_log_query", { ...q, query: "AppExceptions | summarize lastSeen=max(TimeGenerated)" }))[0], false);
+    assert.match((await monitor("monitor_workspace_log_query", { ...q, workspace: "law-payments" }))[1], /InsufficientAccessError/);
+    assert.match((await monitor("monitor_workspace_log_query", { ...q, workspace: "law-archive" }))[1], /Could not find workspace with name law-archive/);
+
+    const comments = await call(ado, "wit_work_item", { action: "list_comments", project: "p", workItemId: 1234, top: 5 });
+    assert.ok(!comments[0] && comments[1].includes("Thêm AC"));
+    assert.equal((await call(ado, "wit_work_item", { action: "list_revisions", project: "p", workItemId: 1234, top: 5, skip: 0, expand: "fields" }))[0], false);
 
     const [err, text] = await call(workiq, "fetch", { entityUrls: ["/me/messages/m1"] });
     assert.ok(!err && text.includes("[Prod]"));

@@ -57,13 +57,14 @@ for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || 
 await runtime.stop();
 
 // Items from an agent that later failed (e.g. schema error) are already excluded by the runtime.
-const { items, failures, blocked, usedAiCredits } = summarize(events);
+const { items, failures, warnings, blocked, usedAiCredits } = summarize(events);
 const date = new Date().toISOString().slice(0, 10);
 const html = renderReport({
   date,
   runtime: cfg.runtime,
   items,
   failures,
+  warnings,
   blocked,
   usedAiCredits,
   maxAiCredits: cfg.maxAiCredits,
@@ -72,4 +73,4 @@ const html = renderReport({
 const out = path.join(cfg.root, "reports", `brief-${date}.html`);
 mkdirSync(path.dirname(out), { recursive: true });
 writeFileSync(out, html);
-console.log(`\n${items.length} mục, ${Object.keys(failures).length} lỗi → ${out}`);
+console.log(`\n${items.length} mục, ${Object.keys(failures).length} lỗi, ${warnings?.length ?? 0} cảnh báo → ${out}`);

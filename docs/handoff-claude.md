@@ -5,6 +5,7 @@
 > và "chẩn đoán workspace thứ hai"), [mcp-tools.md](mcp-tools.md), [step0-results.md](step0-results.md) (dòng 6, 9).
 > Bàn giao trước: 2026-11-23 (Home xong mục 1–8, commit `d309405`); 2026-11-25 lần 2 (Home xong mục 1–7,
 > commit `943360a`).
+> **2026-11-25 (lần 3): Home đã làm xong mục 1–7 ở §3** (xem [handoff-copilot.md](handoff-copilot.md)).
 
 ## 1. Trạng thái
 

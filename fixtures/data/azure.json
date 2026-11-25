@@ -69,5 +69,15 @@
       "resourceName": "orders-api",
       "resourceGroup": "rg-orders"
     }
+  ],
+  "inaccessibleWorkspaces": [
+    {
+      "name": "law-payments",
+      "status": 403
+    },
+    {
+      "name": "law-archive",
+      "status": 404
+    }
   ]
 }
