@@ -6,6 +6,7 @@ Một nơi điều phối nhiều agent (Outlook/Teams, Azure DevOps, GitHub, Az
 
 Bối cảnh, quyết định kiến trúc, lộ trình: [PLAN.md](PLAN.md).
 **Bắt đầu ở máy công ty: [docs/WORK.md](docs/WORK.md).**
+Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](docs/handoff-copilot.md), Work → Home [docs/handoff-claude.md](docs/handoff-claude.md).
 
 ## Trạng thái
 

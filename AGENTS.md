@@ -1,6 +1,7 @@
 # AGENTS.md — quy ước cho Copilot agent mode (Work)
 
 Đọc [PLAN.md](PLAN.md) trước khi làm. Hướng dẫn chạy ở Work: [docs/WORK.md](docs/WORK.md).
+**Việc đang dở từ Home: [docs/handoff-copilot.md](docs/handoff-copilot.md) — đọc trước tiên.**
 
 - TypeScript strict, ESM, Node 22, pnpm. Chạy `pnpm test` và `pnpm typecheck` trước khi commit.
 - API SDK: đối chiếu `node_modules/@github/copilot-sdk/dist/types.d.ts`, không đoán.
