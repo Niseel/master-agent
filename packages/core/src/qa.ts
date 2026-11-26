@@ -75,12 +75,18 @@ export function qaAgent(cfg: Pick<HubConfig, "root">, input: QaInput, outDir: st
     displayName: "Nghiệm thu",
     kind: "tester",
     prompt: `Bạn là agent nghiệm thu web bằng Playwright.\n\n${UNTRUSTED_RULE.replace("(mail, tin nhắn Teams, comment, work item, log)", "(nội dung trang web)")}\n\n${QA_RULE}`,
+    // Found at Work run 9: parallel calls closed the browser under the last chapter, the chapter overlay was still on
+    // the screenshots, and a target=_blank click recorded a second video (qa-1.webm).
     task:
       `Trang cần kiểm: ${input.url}\nTiêu chí nghiệm thu:\n${steps}\n\n` +
-      "Trình tự: `browser_start_tracing` → `browser_start_video` {filename: \"qa.webm\"} → `browser_navigate` tới trang → " +
-      "với mỗi tiêu chí n: `browser_video_chapter` {title: \"Tiêu chí n\", description: <tiêu chí>}, thao tác và đọc trang " +
-      "(`browser_snapshot`), rồi `browser_take_screenshot` {filename: \"ac-n.png\"} → `browser_stop_video` → " +
-      "`browser_stop_tracing` → `browser_close`. Trả đúng một kết quả cho mỗi tiêu chí, cùng thứ tự, screenshot là tên file đã chụp.",
+      "Gọi từng tool MỘT, chờ kết quả rồi mới gọi tool tiếp; không gọi nhiều tool cùng lượt. Trình tự:\n" +
+      "1. `browser_start_tracing` → `browser_start_video` {filename: \"qa.webm\"} → `browser_navigate` tới trang.\n" +
+      "2. Với mỗi tiêu chí n, theo thứ tự: `browser_video_chapter` {title: \"Tiêu chí n\", description: <tiêu chí>, duration: 1000} → " +
+      "`browser_wait_for` {time: 1.5} (để lớp phủ chapter tắt) → thao tác và đọc trang (`browser_snapshot`) → " +
+      "`browser_take_screenshot` {filename: \"ac-n.png\"}. Chỉ sang tiêu chí n+1 sau khi đã chụp ac-n.png.\n" +
+      "3. Sau tiêu chí cuối: `browser_stop_video` → `browser_stop_tracing` → `browser_close`.\n" +
+      "Không bấm link mở tab mới (`target=_blank`) hay link sang trang khác: đọc thuộc tính `href`/`target` trong snapshot. " +
+      "Trả đúng một kết quả cho mỗi tiêu chí, cùng thứ tự, screenshot là tên file đã chụp.",
     mcpServers: {
       playwright: {
         type: "stdio",
@@ -133,7 +139,10 @@ const safeFile = (name: string | null, files: string[]) => (name && /^[\w.-]+$/.
 export function renderQaReport(r: QaReport): string {
   const rows = r.criteria.map((c, i) => r.result?.criteria[i] ?? { criterion: c, status: "blocked" as const, evidence: r.error ?? "Agent không trả kết quả cho tiêu chí này.", screenshot: null });
   const count = (s: keyof typeof STATUS) => rows.filter((x) => x.status === s).length;
-  const video = r.files.find((f) => f.endsWith(".webm"));
+  // qa.webm is the run; others (qa-1.webm) come from extra tabs.
+  const videos = r.files.filter((f) => f.endsWith(".webm"));
+  const video = videos.includes("qa.webm") ? "qa.webm" : videos[0];
+  const otherVideos = videos.filter((v) => v !== video);
   const traces = r.files.filter((f) => f.endsWith(".trace") || f.endsWith(".zip"));
   const verdict = r.error && !r.result ? "blocked" : count("fail") ? "fail" : count("blocked") ? "blocked" : "pass";
   return `<!doctype html>
@@ -169,7 +178,7 @@ ${r.error ? `<p class="fail" style="padding:8px 12px;border-radius:8px;margin-to
     })
     .join("\n")}</ol>
 <h2>Video</h2>
-${video ? `<video controls preload="metadata" src="${esc(video)}"></video>` : `<p class="sub">Không có video (cần FFmpeg của Playwright: <code>npx -y @playwright/mcp@${PLAYWRIGHT_MCP_VERSION} install-browser ffmpeg</code>).</p>`}
+${video ? `<video controls preload="metadata" src="${esc(video)}"></video>${otherVideos.length ? `<p class="sub">Video khác (tab phụ): ${otherVideos.map((v) => `<a href="${esc(v)}">${esc(v)}</a>`).join(", ")}</p>` : ""}` : `<p class="sub">Không có video (cần FFmpeg của Playwright: <code>npx -y @playwright/mcp@${PLAYWRIGHT_MCP_VERSION} install-browser ffmpeg</code>).</p>`}
 <h2>Trace</h2>
 ${traces.length ? `<ul>${traces.map((t) => `<li><a href="${esc(t)}" download>${esc(t)}</a></li>`).join("")}</ul><p class="sub">Mở: <code>npx playwright show-trace &lt;file&gt;</code> (cùng thư mục <code>traces/</code>).</p>` : `<p class="sub">Không có trace.</p>`}
 <footer>Runtime: ${esc(r.runtime)} · AI Credits: ${r.usedAiCredits.toFixed(2)} · ${(r.durationMs / 1000).toFixed(1)}s</footer>

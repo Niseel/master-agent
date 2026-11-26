@@ -38,7 +38,8 @@ test("mock e2e: write tool from reader is blocked, approval rejected, results va
   assert.match(done.error!, /^Denied by preToolUse hook: Tool workiq-do_action /);
   assert.ok(ev.some((e) => e.type === "approval.resolved" && e.decision === "reject"));
   const items = ev.flatMap((e) => (e.type === "agent.result" ? e.items : []));
-  assert.equal(items.length, 10);
+  assert.equal(items.length, 10, "the empty item from the fixture is dropped");
+  assert.ok(ev.some((e) => e.type === "message" && e.text.startsWith("Bỏ 1 mục rỗng")));
   assert.ok(items.some((i) => i.title.startsWith("[Nghi lừa đảo]")));
 });
 

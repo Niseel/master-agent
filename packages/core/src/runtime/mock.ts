@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
-import { ActionResult, AgentResult } from "../brief.ts";
+import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
 import { QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
@@ -99,7 +99,9 @@ export class MockRuntime implements AgentRuntime {
           yield { type: "agent.failed", agent: ev.agent, error: `Kết quả sai schema: ${z.prettifyError(parsed.error).replaceAll("\n", "; ")}` };
           continue;
         }
-        yield { ...ev, items: parsed.data.items };
+        const { items, dropped } = dropEmpty(parsed.data.items);
+        if (dropped) yield { type: "message", agent: ev.agent, text: droppedText(dropped) };
+        yield { ...ev, items };
         continue;
       }
 

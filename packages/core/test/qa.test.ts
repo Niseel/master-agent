@@ -41,6 +41,8 @@ test("qa agent: pinned Playwright MCP, headless, isolated, one allowed origin, f
   assert.equal(pw.workingDirectory, "/tmp/qa-1");
   assert.equal(qa.kind, "tester");
   assert.match(qa.task, /1\. Mục cần xử lý[\s\S]*3\. Footer/);
+  assert.match(qa.task, /Gọi từng tool MỘT/);
+  assert.match(qa.task, /target=_blank/);
   assert.throws(() => qaAgent({ root }, { ...input, url: "file:///x" }, "/tmp/qa"));
 });
 
@@ -55,6 +57,7 @@ test("mock e2e qa: denied tools reach the model as denied calls; report shows pa
   const dir = mkdtempSync(path.join(tmpdir(), "agenthub-qa-"));
   writeFileSync(path.join(dir, "ac-1.png"), "png");
   writeFileSync(path.join(dir, "qa.webm"), "webm");
+  writeFileSync(path.join(dir, "qa-1.webm"), "webm"); // a target=_blank tab at Work run 9; sorts first
   const rt = new MockRuntime(cfg);
   const events: HubEvent[] = [];
   for await (const e of rt.run({ prompt: "Nghiệm thu", agents: [qaAgent(cfg, input, dir)], budget: 30, scenario: "qa-ok" })) events.push(e);
@@ -66,12 +69,13 @@ test("mock e2e qa: denied tools reach the model as denied calls; report shows pa
 
   const { file, report } = saveQaReport(cfg, dir, input, events, 2400);
   const html = readFileSync(file, "utf8");
-  assert.deepEqual(report.files.sort(), ["ac-1.png", "qa.webm"]);
+  assert.deepEqual(report.files.sort(), ["ac-1.png", "qa-1.webm", "qa.webm"]);
   assert.match(html, /2 đạt · 1 không đạt · 0 không kiểm được/);
   assert.match(html, /<img src="ac-1\.png"/);
   assert.ok(!html.includes('src="ac-2.png"'), "missing file not linked");
   assert.ok(!html.includes("etc/passwd"), "a path from the model is never linked");
-  assert.match(html, /<video controls preload="metadata" src="qa\.webm">/);
+  assert.match(html, /<video controls preload="metadata" src="qa\.webm">/, "the run's video, not the extra tab's");
+  assert.match(html, /Video khác \(tab phụ\): <a href="qa-1\.webm">/);
   assert.match(html, /Có tiêu chí không đạt/);
 });
 

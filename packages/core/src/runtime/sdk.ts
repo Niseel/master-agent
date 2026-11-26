@@ -10,7 +10,7 @@ import {
 } from "@github/copilot-sdk";
 import type { AgentSpec } from "../agents.ts";
 import { az } from "../auth.ts";
-import { ActionResult, AgentResult } from "../brief.ts";
+import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
 import { QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
@@ -158,7 +158,9 @@ export class SdkRuntime implements AgentRuntime {
         q.push({ type: "qa.result", agent: a.name, result: await s.sendAndWait({ prompt }, QaResult, long) });
       } else {
         const result = await s.sendAndWait({ prompt }, AgentResult, this.cfg.timeoutMs);
-        q.push({ type: "agent.result", agent: a.name, items: result.items });
+        const { items, dropped } = dropEmpty(result.items);
+        if (dropped) q.push({ type: "message", agent: a.name, text: droppedText(dropped) });
+        q.push({ type: "agent.result", agent: a.name, items });
       }
       q.push({ type: "agent.completed", agent: a.name, durationMs: Date.now() - t0 });
     } catch (e) {

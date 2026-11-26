@@ -204,9 +204,9 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
       else if (srv.calls) srv.status = "done";
     }
   }
-  // The brief's total covers the readers; writer runs come after it and add their own.
+  // The brief's total covers the readers; writer and qa runs come after it and add their own.
   const sum = (kind: AgentInfo["kind"]) => agents.filter((a) => a.kind === kind).reduce((n, a) => n + (view.agents[a.name].credits ?? 0), 0);
-  view.usedAiCredits = Math.max(usedTotal, sum("reader")) + sum("writer");
+  view.usedAiCredits = Math.max(usedTotal, sum("reader")) + sum("writer") + sum("tester");
   return view;
 }
 

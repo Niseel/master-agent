@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import { readerAgents, writerAgents } from "@agenthub/core/agents";
+import { qaAgent } from "@agenthub/core/qa";
 import { loadConfig } from "@agenthub/core/config";
 import { MockRuntime } from "@agenthub/core/runtime/mock";
 import { derive, pending, type AgentInfo, type Timed } from "../src/state.ts";
@@ -88,4 +89,11 @@ test("dashboard state: a writer run appended to the brief shows its result; repe
   assert.deepEqual(v.approvals.map((a) => a.decision), ["reject", "reject", "approve"]);
   assert.equal(v.agents["code-reader"].items, briefItems, "brief state kept");
   assert.equal(v.usedAiCredits, 31.5 + 3.2, "writer credits add to the brief total");
+
+  // Found at Work run 9: qa credits were left out of the meter.
+  const qaSpec = qaAgent(cfg, { url: "http://127.0.0.1:4317/report", criteria: ["a", "b", "c"] }, "/tmp/qa");
+  for await (const event of new MockRuntime(cfg).run({ prompt: "x", agents: [qaSpec], budget: 30, scenario: "qa-ok" })) events.push({ at: (t += 10), event });
+  const withQa = derive([...all, { ...qaSpec, servers: ["playwright"], missingConfig: null }], events);
+  assert.equal(withQa.usedAiCredits, 31.5 + 3.2 + 4.8);
+  assert.equal(withQa.agents.qa.qa?.criteria.length, 3);
 });

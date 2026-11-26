@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { readerAgents } from "../../core/src/agents.ts";
+import { readerAgents, writerAgents } from "../../core/src/agents.ts";
 import { loadConfig } from "../../core/src/config.ts";
 import { decide } from "../../core/src/security.ts";
 
@@ -51,6 +51,21 @@ for (const [agentName, key] of [["comms-reader", "workiq"], ["board-reader", "ad
     }
   });
 }
+
+// Writer allowlists (names checked at Work run 9) exist in the mock too, so byok writer runs find them.
+test("mock workiq/ado: writer read and write tools exist", async () => {
+  const cfg = { ...(await loadConfig(root)), runtime: "mock" as const };
+  for (const [agentName, key] of [["comms-writer", "workiq"], ["board-writer", "ado"]] as const) {
+    const agent = writerAgents(cfg).find((a) => a.name === agentName)!;
+    const client = await connect(key);
+    try {
+      const names = (await client.listTools()).tools.map((t) => `${key}-${t.name}`);
+      for (const t of [...(agent.readTools as string[]), ...agent.writeTools!]) assert.ok(names.includes(t), `${t} missing in mock`);
+    } finally {
+      await client.close();
+    }
+  }
+});
 
 // Error texts copied from the real servers (docs/work-feedback.md, 2026-11-25).
 test("mock errors match real servers", async () => {

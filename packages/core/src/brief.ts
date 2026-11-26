@@ -19,6 +19,16 @@ export type BriefItem = z.infer<typeof BriefItem>;
 export const AgentResult = z.object({ items: z.array(BriefItem) });
 export type AgentResult = z.infer<typeof AgentResult>;
 
+/**
+ * Found at Work run 9: a reader returned one item with empty title and summary instead of `items: []`.
+ * Drop those (not a schema error: that would fail the whole agent).
+ */
+export function dropEmpty(items: BriefItem[]) {
+  const kept = items.filter((i) => i.title.trim() || i.summary.trim());
+  return { items: kept, dropped: items.length - kept.length };
+}
+export const droppedText = (n: number) => `Bỏ ${n} mục rỗng (không có tiêu đề và tóm tắt)`;
+
 /** What a writer agent returns (Phase 3). */
 export const ActionResult = z.object({ summary: z.string(), link: z.string().nullable() });
 export type ActionResult = z.infer<typeof ActionResult>;

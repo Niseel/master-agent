@@ -307,7 +307,7 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
         await hub.startQa(target, criteria);
         return json(res, 202, { status: hub.status });
       }
-      const qaFile = req.method === "GET" && url.pathname.match(/^\/qa\/([^/]+)\/?(.*)$/);
+      const qaFile = (req.method === "GET" || req.method === "HEAD") && url.pathname.match(/^\/qa\/([^/]+)\/?(.*)$/);
       if (qaFile) return serveQa(res, hub.reportDir, qaFile[1], qaFile[2]);
       if (route === "POST /api/act") {
         const { agent, item, instruction } = await readJson(req);

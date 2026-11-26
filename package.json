@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "playwright-smoke": "tsx scripts/playwright-smoke.ts",
     "hub": "tsx apps/server/src/main.ts",
-    "dashboard": "pnpm --filter @agenthub/web build && tsx apps/server/src/main.ts"
+    "dashboard": "tsx scripts/dashboard.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

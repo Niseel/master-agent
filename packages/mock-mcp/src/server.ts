@@ -67,6 +67,12 @@ if (kind === "workiq") {
     { description: "Run a WorkIQ action, including write operations", inputSchema: { path: z.string(), action: z.string(), body: z.unknown().optional() } },
     async () => json({ error: NEVER }),
   );
+  // comms-writer's only write (byok runs, after approval). Fake reply, nothing is sent.
+  server.registerTool(
+    "create_entity",
+    { description: "Create a WorkIQ entity by POSTing JSON to a parent collection path", inputSchema: { path: z.string(), body: z.unknown() } },
+    async ({ path: p }) => json({ mock: true, path: p, id: "mock-1" }),
+  );
   server.registerTool(
     "accept_eula",
     { description: "Accept the End User License Agreement (EULA) to enable WorkIQ tools", inputSchema: {} },
@@ -155,10 +161,17 @@ if (kind === "workiq") {
     { description: "Retrieve a list of teams for a project", inputSchema: { project: z.string() }, annotations: readOnly },
     async () => json(data.teams),
   );
+  // Write tools, names seen at Work 2026-11-26 (list-tools --writers): grouped by `action` like the read tools.
+  // ponytail: params and `action` values are guesses; Work records them from the approval args (handoff-copilot).
   server.registerTool(
-    "wit_add_work_item_comment",
-    { description: "Add a comment to a work item", inputSchema: { id: z.number(), comment: z.string() } },
-    async () => json({ error: NEVER }),
+    "wit_work_item_comment_write",
+    { description: "Add or update a comment on a work item. Use 'action' to choose.", inputSchema: { action: z.string(), project: z.string().optional(), workItemId: z.number(), text: z.string() } },
+    async ({ workItemId }) => json({ mock: true, workItemId, commentId: 1 }),
+  );
+  server.registerTool(
+    "wit_work_item_write",
+    { description: "Create or update a work item. Use 'action' to choose.", inputSchema: { action: z.string(), project: z.string().optional(), id: z.number().optional(), fields: z.record(z.string(), z.unknown()).optional() } },
+    async ({ id }) => json({ mock: true, id: id ?? 9999 }),
   );
 } else if (kind === "azure") {
   const data = load("azure");

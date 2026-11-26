@@ -90,11 +90,14 @@ test("writer: listed write tools need approval, listed reads pass, anything else
       assert.ok(Array.isArray(a.readTools) && a.writeTools?.length, `${a.name} has explicit lists`);
       for (const t of a.writeTools!) assert.equal(decide(a, t).decision, "ask", `${a.name} ${t}`);
       for (const t of a.readTools as string[]) assert.equal(looksLikeWrite(t), false, `${a.name} read list holds a write: ${t}`);
-      const fn = { comms: ["retrieve", "ask", "fetch"], board: ["wit_query", "wit_work_item"], code: ["get_file_contents", "pull_request_read"] };
+      const fn = { comms: ["retrieve", "ask", "fetch"], board: ["wit_query", "search_workitem"], code: ["get_file_contents", "pull_request_read"] };
       const own = Object.keys(a.mcpServers)[0];
       for (const t of fn[a.name.split("-")[0] as keyof typeof fn]) assert.equal(decide(a, `${own}-${t}`).decision, "deny", `${a.name} reads no content: ${t}`);
     }
   }
+  // Built-in tools (shell, git, gh, curl) are not MCP tools of the writer's own server: always denied.
+  const board = writerAgents({ ...(await loadConfig(root)), runtime: "mock" }).find((a) => a.name === "board-writer")!;
+  for (const t of ["bash", "shell", "git", "gh", "curl", "github-mcp-server-create_issue"]) assert.equal(decide(board, t).decision, "deny", t);
   // Readers keep their read-only headers; writers drop them (they write), so their lists are the only limit.
   const real = { ...(await loadConfig(root)), runtime: "copilot" as const };
   for (const a of readerAgents(real)) assert.equal(a.writeTools, undefined, `${a.name} has no write tools`);

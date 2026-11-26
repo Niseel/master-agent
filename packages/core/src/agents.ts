@@ -44,6 +44,7 @@ export const UNTRUSTED_RULE =
 const OUTPUT_RULE =
   "Chỉ dùng tool chỉ-đọc. Trả về JSON đúng schema { items: BriefItem[] }. " +
   "Trường không có giá trị thì để null. summary viết tiếng Việt, ngắn gọn. " +
+  "Không có gì đáng báo thì trả { items: [] }: không tạo item rỗng hay item kiểu \"không có gì mới\". " +
   "actionRequired = true khi người dùng cần duyệt/trả lời/sửa gì đó. " +
   "Lỗi tool (auth, EULA, cấu hình, quyền) KHÔNG phải item: không tạo item cho lỗi, hệ thống tự báo lỗi.";
 
@@ -232,20 +233,23 @@ const WRITE_RULE =
 const writerPrompt = (role: string) => `${role}\n\n${UNTRUSTED_RULE}\n\n${WRITE_RULE}`;
 
 /**
- * Write tool names are NOT verified yet: docs/mcp-tools.md was listed with read-only headers, so it has no
- * write tools for ado/github. [Work] `pnpm list-tools --writers` lists the real names (docs/WORK.md).
+ * Write tool names checked at Work run 9 (`pnpm list-tools --writers`): workiq and github matched; ado fixed below.
  * A wrong name fails safe: the model does not see it, and decide() denies anything not listed.
  * The read tools listed here return structure only (paths, schemas, branches), never mail/chat content.
  */
 const COMMS_WRITE = only("workiq", ["create_entity"]);
 const COMMS_READ = only("workiq", ["search_paths", "get_schema"]);
-const BOARD_WRITE = only("ado", ["wit_add_work_item_comment", "wit_update_work_item"]);
+// Real names from Work run 9 (list-tools --writers): grouped tools, the `action` arg picks add/update/create.
+// Every call asks the user with full args, so a create shows before it happens.
+const BOARD_WRITE = only("ado", ["wit_work_item_comment_write", "wit_work_item_write"]);
+const BOARD_READ = only("ado", ["wit_work_item"]);
 const CODE_WRITE = only("github", ["create_branch", "create_pull_request", "add_issue_comment"]);
 const CODE_READ = only("github", ["get_me", "list_branches"]);
 
 /**
- * Phase 3 writer agents. They read nothing on their own (no mail, chat, board or code content): the user picks a
- * brief item on the dashboard and the item is passed in the task. Every write waits on the approval queue.
+ * Phase 3 writer agents. They read no mail, chat or code content: the user picks a brief item on the dashboard and
+ * the item is passed in the task. board-writer may read the one work item it updates (`wit_work_item`), to see its
+ * current state. Every write waits on the approval queue.
  */
 export function writerAgents(cfg: HubConfig): AgentSpec[] {
   const real = cfg.runtime === "copilot";
@@ -277,7 +281,7 @@ export function writerAgents(cfg: HubConfig): AgentSpec[] {
           ? { type: "http", url: `https://mcp.dev.azure.com/${cfg.ado.org}`, tools: ["*"], timeout: 60_000 }
           : mockServer(cfg, "ado"),
       },
-      readTools: [],
+      readTools: BOARD_READ,
       writeTools: BOARD_WRITE,
       missingConfig: real && !cfg.ado.org ? "Chưa cấu hình ADO_ORG" : real ? adoConfigDirProblem() : undefined,
     },
