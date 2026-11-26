@@ -25,10 +25,23 @@ export const looksLikeWrite = (tool: string) => segments(tool).some((s) => WRITE
  * The approval gate. `tool` is the runtime name `<server-key>-<tool>`.
  * Readers: allow only their own servers' read tools, deny everything else.
  * Writers (Phase 3): their writeTools always "ask" (approval queue), their readTools are allowed, the rest denied.
+ * Testers (Phase 4): listed browser tools are allowed; `browser_navigate` only to allowedOrigins (needs `args`).
  */
-export function decide(agent: AgentSpec, tool: string): { decision: Decision; reason: string } {
+export function decide(agent: AgentSpec, tool: string, args?: unknown): { decision: Decision; reason: string } {
   const own = Object.keys(agent.mcpServers).some((k) => tool.startsWith(`${k}-`));
   if (!own) return { decision: "deny", reason: `Tool ${tool} không thuộc MCP server của ${agent.name}` };
+  if (agent.kind === "tester") {
+    if (agent.readTools === "*" || !agent.readTools.includes(tool)) {
+      return { decision: "deny", reason: `Tool ${tool} không có trong danh sách tool của ${agent.name}` };
+    }
+    if (tool.endsWith("-browser_navigate")) {
+      const origin = originOf((args as { url?: unknown } | undefined)?.url);
+      if (!origin || !agent.allowedOrigins?.includes(origin)) {
+        return { decision: "deny", reason: `URL ngoài trang được kiểm (chỉ ${agent.allowedOrigins?.join(", ") || "không có"})` };
+      }
+    }
+    return { decision: "allow", reason: "Trong allowlist" };
+  }
   if (agent.kind === "writer") {
     if (agent.writeTools?.includes(tool)) return { decision: "ask", reason: "Tool ghi cần người duyệt" };
     return agent.readTools !== "*" && agent.readTools.includes(tool)
@@ -46,6 +59,17 @@ export function decide(agent: AgentSpec, tool: string): { decision: Decision; re
 }
 
 export { DENIED_PREFIX } from "./hints.ts";
+
+/** `https://host:port` of an http(s) URL, else null (file:, javascript:, data:, garbage). */
+export function originOf(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Extra text for the model when a call is denied: the tools it may call. The model sees this reason and fixes a

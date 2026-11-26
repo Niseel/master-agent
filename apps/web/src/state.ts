@@ -3,18 +3,21 @@
  */
 import type { BriefItem } from "@agenthub/core/brief";
 import type { HubEvent } from "@agenthub/core/events";
+import type { QaReport, QaResult } from "@agenthub/core/qa";
 import { DENIED_PREFIX, findHint, hint } from "@agenthub/core/hints";
 
 export interface AgentInfo {
   name: string;
   displayName: string;
-  kind: "reader" | "writer";
+  kind: "reader" | "writer" | "tester";
   servers: string[];
   missingConfig: string | null;
 }
 export type Timed = { at: number; event: HubEvent };
 export type RunStatus = "idle" | "running" | "done" | "stopped";
-export type RunMode = "brief" | "act";
+export type RunMode = "brief" | "act" | "qa";
+/** Last qa run: `dir` is served at /qa/<dir>/. */
+export type QaSummary = QaReport & { dir: string };
 export interface ReportSummary {
   file: string;
   items: BriefItem[];
@@ -35,6 +38,7 @@ export interface Snapshot {
   prompt: string;
   events: Timed[];
   report: ReportSummary | null;
+  qa: QaSummary | null;
 }
 
 /** needs-action: a known blocking cause (login, EULA, config) the user must fix. warning: a tool error, agent went on. */
@@ -65,6 +69,8 @@ export interface AgentView {
   messages: string[];
   /** Writers: what the last run did, or why not. */
   action?: { summary: string; link: string | null };
+  /** qa: pass/fail per criterion of the last run. */
+  qa?: QaResult;
 }
 export interface ServerView {
   status: NodeStatus;
@@ -111,7 +117,7 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
     switch (ev.type) {
       case "agent.started":
         // A writer can run many times on top of one brief: each run starts clean.
-        if (agent) Object.assign(agent, { status: "running", startedAt: at, durationMs: undefined, error: undefined, hint: undefined, action: undefined });
+        if (agent) Object.assign(agent, { status: "running", startedAt: at, durationMs: undefined, error: undefined, hint: undefined, action: undefined, qa: undefined });
         break;
       case "tool.started": {
         const call: Call = { callId: ev.callId, agent: ev.agent, server: ev.server, tool: ev.tool, startedAt: at };
@@ -148,6 +154,9 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
         break;
       case "action.result":
         if (agent) agent.action = { summary: ev.summary, link: ev.link };
+        break;
+      case "qa.result":
+        if (agent) agent.qa = ev.result;
         break;
       case "agent.completed":
         if (!agent) break;

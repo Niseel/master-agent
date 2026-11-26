@@ -135,6 +135,32 @@ test("server: act runs one writer on a brief item, after the brief; bad input is
   }
 });
 
+test("server: qa run saves its report in its own dir; files served only from there, with a no-script CSP", async () => {
+  const { hub, server, post, base } = await start("brief-ok");
+  try {
+    assert.equal((await post("/api/qa", { url: "file:///etc/passwd", criteria: "a" })).status, 400);
+    assert.equal((await post("/api/qa", { url: "http://127.0.0.1:4317/report", criteria: " \n " })).status, 400);
+    const { done } = await hub.startQa("http://127.0.0.1:4317/report", "- Mục cần xử lý nằm đầu báo cáo\n- Link mở tab mới\n- Footer ghi AI Credits");
+    await done;
+    assert.equal(hub.mode, "qa");
+    assert.equal(hub.status, "done");
+    const qa = hub.qa!;
+    assert.match(qa.dir, /^qa-\d{4}-\d{2}-\d{2}-\d{6}-mock$/);
+    assert.deepEqual(qa.report.result?.criteria.map((c) => c.status), ["pass", "fail", "pass"]);
+    assert.equal(hub.report, null, "a qa run does not make a brief report");
+
+    const page = await fetch(`${base}/qa/${qa.dir}/`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get("content-security-policy")!, /default-src 'none'/);
+    assert.match(await page.text(), /Có tiêu chí không đạt/);
+    for (const bad of [`/qa/${qa.dir}/..%2F..%2Fpackage.json`, "/qa/..%2F/x", "/qa/brief/index.html", `/qa/${qa.dir}/nope.png`]) {
+      assert.equal((await fetch(base + bad)).status, 404, bad);
+    }
+  } finally {
+    server.close();
+  }
+});
+
 test("server: stop rejects pending approvals and ends the run as stopped", async () => {
   const { hub, server } = await start("brief-ok");
   try {

@@ -7,8 +7,11 @@ import type { HubConfig } from "./config.ts";
 export interface AgentSpec {
   name: string;
   displayName: string;
-  /** "reader" agents never get write tools. "writer" agents (Phase 3): every write tool waits for the user. */
-  kind: "reader" | "writer";
+  /**
+   * "reader" agents never get write tools. "writer" agents (Phase 3): every write tool waits for the user.
+   * "tester" (Phase 4, qa): browser tools on one site only (allowedOrigins), no tool that runs arbitrary code.
+   */
+  kind: "reader" | "writer" | "tester";
   /** System prompt (appended to the SDK default). */
   prompt: string;
   /** The brief task sent as the user message. */
@@ -26,6 +29,8 @@ export interface AgentSpec {
   readTools: string[] | "*";
   /** Writers only: runtime tool names that always go to the approval queue. Readers never have this. */
   writeTools?: string[];
+  /** Testers only: origins (`https://host:port`) the browser may navigate to. */
+  allowedOrigins?: string[];
   model?: string;
   /** Set when config is missing; the runtime reports the agent as failed without starting it. */
   missingConfig?: string;
@@ -51,7 +56,7 @@ const prompt = (role: string) => `${role}\n\n${UNTRUSTED_RULE}\n\n${OUTPUT_RULE}
  * get_copilot_job_status, people/team tools. The SDK's built-in `github-mcp-server-*` tools share the
  * "github-" prefix, so only an explicit list keeps them away from code-reader.
  */
-const only = (server: string, tools: string[]) => tools.map((t) => `${server}-${t}`);
+export const only = (server: string, tools: string[]) => tools.map((t) => `${server}-${t}`);
 const WORKIQ_READ = only("workiq", ["retrieve", "ask", "fetch", "search_paths", "get_schema"]);
 const ADO_READ = only("ado", [
   "wit_work_item", "wit_query", "search_workitem", "wit_backlog", "work", "core_list_projects", "core_list_project_teams",
@@ -78,7 +83,7 @@ export function adoConfigDirProblem(dir = process.env.ADO_AZURE_CONFIG_DIR): str
 }
 
 /** `npx <args>` as a stdio command. On Windows npx is a .cmd shim, so go through cmd /c. */
-const npx = (args: string[]) =>
+export const npx = (args: string[]) =>
   process.platform === "win32" ? { command: "cmd", args: ["/c", "npx", ...args] } : { command: "npx", args };
 
 /** Mock MCP server (stdio) from packages/mock-mcp, run through tsx. */

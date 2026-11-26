@@ -70,7 +70,7 @@ export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "fail
   return { items, failures, warnings: [...new Set(warnings)], blocked, usedAiCredits };
 }
 
-const esc = (s: string) =>
+export const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 /** Only http(s) links are rendered: content comes from untrusted mail/chat. */

@@ -11,6 +11,7 @@ import {
 import type { AgentSpec } from "../agents.ts";
 import { az } from "../auth.ts";
 import { ActionResult, AgentResult } from "../brief.ts";
+import { QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
 import { audit, decide, denyHint } from "../security.ts";
@@ -73,9 +74,9 @@ export async function waitForMcp(s: Pick<CopilotSession, "rpc">, names: string[]
 export const sessionTools = (a: Pick<AgentSpec, "readTools" | "writeTools">) =>
   a.readTools === "*" ? ["mcp:*"] : [...a.readTools, ...(a.writeTools ?? [])].map((t) => `mcp:${t}`);
 
-/** A writer's turn includes waiting for the user on the approval queue. */
+/** A writer's turn includes waiting for the user on the approval queue; a qa run drives a browser through every criterion. */
 // ponytail: fixed 15 min; make it configurable if users leave approvals open longer.
-export const WRITER_TIMEOUT_MS = 15 * 60_000;
+export const LONG_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * Real Copilot SDK runtime. Used for both:
@@ -149,9 +150,12 @@ export class SdkRuntime implements AgentRuntime {
       const stuck = await waitForMcp(s, Object.keys(a.mcpServers));
       if (stuck.length) q.push({ type: "message", agent: a.name, text: `MCP chưa kết nối sau 60s: ${stuck.join(", ")}` });
       const prompt = [input.prompt, a.task].filter(Boolean).join("\n\n");
+      const long = Math.max(this.cfg.timeoutMs, LONG_TIMEOUT_MS);
       if (a.kind === "writer") {
-        const r = await s.sendAndWait({ prompt }, ActionResult, Math.max(this.cfg.timeoutMs, WRITER_TIMEOUT_MS));
+        const r = await s.sendAndWait({ prompt }, ActionResult, long);
         q.push({ type: "action.result", agent: a.name, ...r });
+      } else if (a.kind === "tester") {
+        q.push({ type: "qa.result", agent: a.name, result: await s.sendAndWait({ prompt }, QaResult, long) });
       } else {
         const result = await s.sendAndWait({ prompt }, AgentResult, this.cfg.timeoutMs);
         q.push({ type: "agent.result", agent: a.name, items: result.items });
@@ -175,7 +179,7 @@ export class SdkRuntime implements AgentRuntime {
     callId: string | undefined,
     q: EventQueue<HubEvent>,
   ): Promise<PreToolUseHookOutput> {
-    const { decision, reason } = decide(a, tool);
+    const { decision, reason } = decide(a, tool, args);
     audit(this.cfg.root, { agent: a.name, tool, args, decision, reason });
     if (decision === "deny") q.push({ type: "message", agent: a.name, text: `Bị chặn: ${reason}` });
     if (decision === "allow") return { permissionDecision: decision, permissionDecisionReason: reason };
@@ -197,7 +201,7 @@ export class SdkRuntime implements AgentRuntime {
   /** Second layer: runtime permission prompts. Only MCP tools the gate allows (or the user approved) pass. */
   private permission(a: AgentSpec, req: PermissionRequest): PermissionRequestResult {
     if (req.kind !== "mcp") return { kind: "reject", feedback: "Agent Hub chỉ cho phép tool MCP" };
-    const { decision, reason } = decide(a, `${req.serverName}-${req.toolName}`);
+    const { decision, reason } = decide(a, `${req.serverName}-${req.toolName}`, req.args);
     if (decision === "allow") return { kind: "approve-once" };
     if (decision === "ask" && req.toolCallId && this.approvedCalls.delete(req.toolCallId)) return { kind: "approve-once" };
     return { kind: "reject", feedback: reason };

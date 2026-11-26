@@ -7,25 +7,32 @@
  *   GET  /*                       the built dashboard (apps/web/dist, `pnpm dashboard`)
  *   POST /api/run      {prompt}   start a brief run with the reader agents (409 while one is running)
  *   POST /api/act      {agent, item, instruction}  run one writer agent on a brief item (Phase 3); its writes wait for approval
+ *   POST /api/qa       {url, criteria}  acceptance test of one site with Playwright (Phase 4); criteria = one per line
+ *   GET  /qa/<run>/<file>         a qa run's report (index.html), screenshots, video, trace
  *   POST /api/approvals/:id {decision: "approve"|"reject", feedback?}
  *   POST /api/stop
  * SSE + POST instead of WebSocket: the stream only flows server -> browser, and node:http does both without a dependency.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { checkAuth } from "@agenthub/core/auth";
 import { readerAgents, WRITER_FOR, writerAgents, writerTask, type AgentSpec } from "@agenthub/core/agents";
 import { BriefItem } from "@agenthub/core/brief";
+import { parseCriteria, qaAgent, qaDir, saveQaReport, type QaInput, type QaReport } from "@agenthub/core/qa";
+import { originOf } from "@agenthub/core/security";
 import type { HubConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
 import { renderReport, saveReport, type BriefReport } from "@agenthub/core/report";
 import { createRuntime, type AgentRuntime, type RunInput } from "@agenthub/core/runtime/index";
 
 export type RunStatus = "idle" | "running" | "done" | "stopped";
-/** brief: the reader agents, makes a report. act: one writer on one brief item, appended to the brief's events. */
-export type RunMode = "brief" | "act";
+/**
+ * brief: the reader agents, makes a report. act: one writer on one brief item. qa: one acceptance test.
+ * act and qa are appended to the brief's events, so its graph and report stay.
+ */
+export type RunMode = "brief" | "act" | "qa";
 type Send = (event: "state" | "hub" | "run", data: unknown) => void;
 
 /** One run at a time. Holds the events so a browser that connects late sees the whole run. */
@@ -37,6 +44,8 @@ export class Hub {
   status: RunStatus = "idle";
   mode: RunMode = "brief";
   report: { file: string; report: BriefReport } | null = null;
+  /** Last qa run: dir name under the reports dir, and its report. */
+  qa: { dir: string; report: QaReport } | null = null;
   private runtime: AgentRuntime | null = null;
   private stopping = false;
   private listeners = new Set<Send>();
@@ -48,7 +57,17 @@ export class Hub {
   constructor(readonly cfg: HubConfig) {
     this.readers = readerAgents(cfg);
     this.writers = writerAgents(cfg);
-    this.agents = [...this.readers, ...this.writers];
+    // Drawn as one node; each run builds its own spec (target URL, output dir).
+    const qaShape = qaAgent(cfg, { url: "http://127.0.0.1/", criteria: [] }, this.reportDir);
+    this.agents = [...this.readers, ...this.writers, qaShape];
+  }
+
+  get reportDir() {
+    return path.dirname(qaDir(this.cfg));
+  }
+
+  private qaState() {
+    return this.qa && { dir: this.qa.dir, ...this.qa.report };
   }
 
   state() {
@@ -68,6 +87,7 @@ export class Hub {
       prompt: this.prompt,
       events: this.events.map((event, i) => ({ at: this.times[i], event })),
       report: this.report && { file: this.report.file, ...this.report.report },
+      qa: this.qaState(),
     };
   }
 
@@ -100,7 +120,21 @@ export class Hub {
     return this.launch("act", instruction.trim(), { prompt: instruction.trim(), agents: [spec], budget: 30, scenario: `act-${writer.name}` });
   }
 
-  private async launch(mode: RunMode, prompt: string, input: RunInput) {
+  /** Acceptance test of `url` against `criteria` (one per line). Report and files land in <reports>/qa-<time>/. */
+  startQa(url: unknown, criteria: unknown) {
+    if (typeof url !== "string" || !originOf(url)) throw new HttpError(400, "url phải là http(s)");
+    const list = typeof criteria === "string" ? parseCriteria(criteria) : [];
+    if (!list.length) throw new HttpError(400, "Cần ít nhất 1 tiêu chí (mỗi dòng một tiêu chí)");
+    const input: QaInput = { url, criteria: list };
+    const dir = qaDir(this.cfg);
+    mkdirSync(dir, { recursive: true });
+    const spec = qaAgent(this.cfg, input, dir);
+    return this.launch("qa", `Nghiệm thu ${url}`, { prompt: "Nghiệm thu trang dưới đây theo các tiêu chí.", agents: [spec], budget: 30, scenario: "qa-ok" }, (events, ms) => {
+      this.qa = { dir: path.basename(dir), report: saveQaReport(this.cfg, dir, input, events, ms).report };
+    });
+  }
+
+  private async launch(mode: RunMode, prompt: string, input: RunInput, finish?: (events: HubEvent[], durationMs: number) => void) {
     if (this.status === "running") throw new HttpError(409, "Đang có lượt chạy");
     this.status = "running";
     this.mode = mode;
@@ -113,6 +147,7 @@ export class Hub {
     this.stopping = false;
     this.emit("run", { status: this.status, mode, prompt });
     const t0 = Date.now();
+    const first = this.events.length;
     const done = (async () => {
       try {
         const rt = (this.runtime = await createRuntime(this.cfg));
@@ -123,8 +158,9 @@ export class Hub {
         await this.runtime?.stop();
         this.runtime = null;
         if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0);
+        finish?.(this.events.slice(first), Date.now() - t0);
         this.status = this.stopping ? "stopped" : "done";
-        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report } });
+        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report }, qa: this.qaState() });
       }
     })();
     return { done };
@@ -196,6 +232,9 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".json": "application/json; charset=utf-8",
+  ".webm": "video/webm",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
 };
 /** The dashboard: own scripts only (React Flow sets inline styles), may frame /report, never framed by another site. */
 const APP_CSP =
@@ -203,6 +242,24 @@ const APP_CSP =
   "connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 /** The report holds mail/chat text: no scripts at all, only its inline <style>. */
 const REPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'; base-uri 'none'";
+
+/** A qa report: its own screenshots and video only, no scripts. */
+const QA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; frame-ancestors 'self'; base-uri 'none'";
+
+/** GET /qa/<run>/<file>: only inside one qa-* dir of the reports dir. Unknown types (traces) download, never render. */
+function serveQa(res: ServerResponse, reportDir: string, run: string, rel: string) {
+  if (!/^qa-[\w-]+$/.test(run)) throw new HttpError(404, "Không có");
+  const base = path.join(reportDir, run);
+  const file = path.resolve(base, "." + path.sep + decodeURIComponent(rel || "index.html"));
+  if (!file.startsWith(base + path.sep) || !existsSync(file) || !statSync(file).isFile()) throw new HttpError(404, "Không có");
+  const type = MIME[path.extname(file)];
+  res.writeHead(200, {
+    "content-type": type ?? "application/octet-stream",
+    "content-security-policy": QA_CSP,
+    ...(type ? {} : { "content-disposition": `attachment; filename="${path.basename(file).replace(/[^\w.-]/g, "_")}"` }),
+  });
+  res.end(readFileSync(file));
+}
 
 /** Serve apps/web/dist; unknown paths fall back to index.html. Never leaves the dist dir. */
 function serveStatic(res: ServerResponse, webDir: string, pathname: string) {
@@ -245,6 +302,13 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
         await hub.start(typeof prompt === "string" && prompt.trim() ? prompt.trim() : "check việc");
         return json(res, 202, { status: hub.status });
       }
+      if (route === "POST /api/qa") {
+        const { url: target, criteria } = await readJson(req);
+        await hub.startQa(target, criteria);
+        return json(res, 202, { status: hub.status });
+      }
+      const qaFile = req.method === "GET" && url.pathname.match(/^\/qa\/([^/]+)\/?(.*)$/);
+      if (qaFile) return serveQa(res, hub.reportDir, qaFile[1], qaFile[2]);
       if (route === "POST /api/act") {
         const { agent, item, instruction } = await readJson(req);
         await hub.act(agent, item, instruction);

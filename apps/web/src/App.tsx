@@ -8,7 +8,7 @@ import { derive, pending, type Approval, type Call, type Snapshot, type View } f
 const secs = (ms?: number) => (ms === undefined ? "–" : `${(ms / 1000).toFixed(1)}s`);
 const AUTH_LABEL = { ok: "Đã đăng nhập", error: "Lỗi", mock: "Giả lập", unknown: "Chưa rõ" } as const;
 
-type Tab = "detail" | "todo" | "approvals" | "auth";
+type Tab = "detail" | "todo" | "qa" | "approvals" | "auth";
 
 export function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -29,7 +29,7 @@ export function App() {
         run: (r) => {
           // An act run (one writer) appends to the brief: keep its events and report.
           const fresh = r.status === "running" && r.mode === "brief";
-          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), events: fresh ? [] : s.events });
+          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), qa: r.qa ?? s.qa, events: fresh ? [] : s.events });
           if (r.report) setReportKey(Date.now());
         },
         connection: setConnected,
@@ -144,6 +144,9 @@ export function App() {
             <button role="tab" aria-selected={tab === "todo"} onClick={() => setTab("todo")}>
               Việc cần làm
             </button>
+            <button role="tab" aria-selected={tab === "qa"} onClick={() => setTab("qa")}>
+              Nghiệm thu
+            </button>
             <button role="tab" aria-selected={tab === "approvals"} onClick={() => setTab("approvals")}>
               Duyệt{waiting.length ? <span className="badge">{waiting.length}</span> : null}
             </button>
@@ -162,6 +165,18 @@ export function App() {
                   act(async () => {
                     await api.actOn(agent, item, instruction);
                     setSelection({ kind: "agent", name: agent });
+                  })
+                }
+              />
+            )}
+            {tab === "qa" && (
+              <Qa
+                snap={snap}
+                running={running}
+                onRun={(url, criteria) =>
+                  act(async () => {
+                    await api.startQa(url, criteria);
+                    setSelection({ kind: "agent", name: "qa" });
                   })
                 }
               />
@@ -265,7 +280,7 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
       <dl>
         <dt>Agent</dt>
         <dd>
-          <code>{info.name}</code> ({info.kind === "reader" ? "chỉ đọc" : "có ghi, cần duyệt"})
+          <code>{info.name}</code> ({info.kind === "reader" ? "chỉ đọc" : info.kind === "tester" ? "trình duyệt, chỉ trang được kiểm" : "có ghi, cần duyệt"})
         </dd>
         <dt>Trạng thái</dt>
         <dd>{STATUS_LABEL[av.status]}</dd>
@@ -458,6 +473,68 @@ function Todo({ snap, view, running, onAct }: { snap: Snapshot; view: View; runn
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+const QA_STATUS = { pass: "Đạt", fail: "Không đạt", blocked: "Không kiểm được" } as const;
+const QA_SAMPLE = "Mục \"Cần bạn xử lý\" nằm đầu báo cáo\nLink trong báo cáo mở tab mới\nFooter ghi số AI Credits đã dùng";
+
+/** Phase 4: acceptance test of one page with Playwright; the report (screenshots, video, trace) opens from /qa/<dir>/. */
+function Qa({ snap, running, onRun }: { snap: Snapshot; running: boolean; onRun: (url: string, criteria: string) => void }) {
+  const [url, setUrl] = useState(() => `${location.origin}/report`);
+  const [criteria, setCriteria] = useState(QA_SAMPLE);
+  const qa = snap.qa;
+  const rows = qa ? qa.criteria.map((c, i) => qa.result?.criteria[i] ?? { criterion: c, status: "blocked" as const, evidence: qa.error ?? "Không có kết quả" }) : [];
+  return (
+    <div className="detail">
+      <p className="muted">
+        Agent mở trang bằng Playwright (headless), kiểm từng tiêu chí, quay video, chụp ảnh, lưu trace. Chỉ mở được đúng origin của URL này; không chạy JS
+        tuỳ ý, không tải file lên.
+      </p>
+      <form
+        className="qa-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onRun(url.trim(), criteria);
+        }}
+      >
+        <label>
+          Trang cần kiểm
+          <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />
+        </label>
+        <label>
+          Tiêu chí nghiệm thu (mỗi dòng một tiêu chí, tối đa 20)
+          <textarea rows={5} required value={criteria} onChange={(e) => setCriteria(e.target.value)} />
+        </label>
+        <button type="submit" className="primary" disabled={running || !url.trim() || !criteria.trim()}>
+          Chạy nghiệm thu ▶
+        </button>
+      </form>
+      {qa && (
+        <>
+          <h4>
+            Lần gần nhất: {rows.filter((r) => r.status === "pass").length}/{rows.length} đạt
+          </h4>
+          <p className="muted">{qa.url}</p>
+          {qa.result?.summary && <p>{qa.result.summary}</p>}
+          {qa.error && <p className="call-error">{qa.error}</p>}
+          <ul className="todo">
+            {rows.map((r, i) => (
+              <li key={i} className={`todo-item qa-${r.status}`}>
+                <div className="row">
+                  <span className={`chip qa-${r.status}`}>{QA_STATUS[r.status]}</span>
+                  <b>{qa.criteria[i]}</b>
+                </div>
+                <div className="muted">{r.evidence}</div>
+              </li>
+            ))}
+          </ul>
+          <a href={`/qa/${encodeURIComponent(qa.dir)}/`} target="_blank" rel="noopener">
+            Mở báo cáo nghiệm thu (ảnh, video, trace) ↗
+          </a>
+        </>
+      )}
     </div>
   );
 }

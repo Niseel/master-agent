@@ -3,6 +3,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { ActionResult, AgentResult } from "../brief.ts";
+import { QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
 import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
@@ -51,7 +52,7 @@ export class MockRuntime implements AgentRuntime {
         const agent = byName.get(ev.agent)!;
         // A tool no server offers (model guessed the name) arrives as server "builtin" with the full name.
         const runtimeName = ev.server === "builtin" ? ev.tool : `${ev.server}-${ev.tool}`;
-        const { decision, reason } = decide(agent, runtimeName);
+        const { decision, reason } = decide(agent, runtimeName, ev.args);
         audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision, reason });
         callAgent.set(ev.callId, agent.name);
         yield ev;
@@ -109,6 +110,12 @@ export class MockRuntime implements AgentRuntime {
           yield { type: "agent.failed", agent: ev.agent, error: `Kết quả sai schema: ${z.prettifyError(parsed.error).replaceAll("\n", "; ")}` };
           continue;
         }
+      }
+
+      if (ev.type === "qa.result" && !QaResult.safeParse(ev.result).success) {
+        failed.add(ev.agent);
+        yield { type: "agent.failed", agent: ev.agent, error: "Kết quả nghiệm thu sai schema" };
+        continue;
       }
 
       if (ev.type === "agent.failed") failed.add(ev.agent);

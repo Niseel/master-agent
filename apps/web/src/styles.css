@@ -164,3 +164,14 @@ ul.calls, ul.messages, ul.approvals, ul.auth-list { list-style: none; padding: 0
 .todo-item form, .todo-item label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .todo-item textarea { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; background: var(--bg); color: var(--fg); resize: vertical; font: inherit; }
 .action-result { background: var(--bg); border-radius: 6px; padding: 6px 8px; margin: 8px 0; font-size: 13px; }
+
+/* Phase 4: acceptance tests */
+.qa-form { display: grid; gap: 8px; margin-bottom: 12px; }
+.qa-form label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.qa-form input, .qa-form textarea { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; background: var(--bg); color: var(--fg); font: inherit; resize: vertical; }
+.todo-item.qa-pass { border-left-color: var(--ok); }
+.todo-item.qa-fail { border-left-color: var(--fail); }
+.todo-item.qa-blocked { border-left-color: var(--warn); }
+.chip.qa-pass { color: var(--ok); }
+.chip.qa-fail { color: var(--fail); }
+.chip.qa-blocked { color: var(--warn); }

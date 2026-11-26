@@ -16,6 +16,7 @@ export const SERVER_LABEL: Record<string, string> = {
   ado: "Azure DevOps MCP",
   github: "GitHub MCP",
   azure: "Azure MCP",
+  playwright: "Playwright MCP",
 };
 
 export type Selection = { kind: "orchestrator" } | { kind: "agent"; name: string } | { kind: "server"; name: string };
@@ -71,7 +72,7 @@ export function Graph(props: {
       id: `agent:${a.name}`,
       type: "hub",
       position: { x: 300, y: i * rowH },
-      data: { title: a.displayName, subtitle: a.kind === "writer" ? `${a.name} · ghi, cần duyệt` : a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }), writer: a.kind === "writer" },
+      data: { title: a.displayName, subtitle: a.kind === "writer" ? `${a.name} · ghi, cần duyệt` : a.kind === "tester" ? `${a.name} · trình duyệt, 1 trang` : a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }), writer: a.kind === "writer" },
     });
     edges.push({
       id: `o>${a.name}`,
