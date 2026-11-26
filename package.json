@@ -13,7 +13,8 @@
     "test": "node --import tsx --import ./scripts/test-setup.ts --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "playwright-smoke": "tsx scripts/playwright-smoke.ts",
-    "hub": "tsx apps/server/src/main.ts"
+    "hub": "tsx apps/server/src/main.ts",
+    "dashboard": "pnpm --filter @agenthub/web build && tsx apps/server/src/main.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
