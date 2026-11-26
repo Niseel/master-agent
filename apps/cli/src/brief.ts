@@ -6,7 +6,8 @@
 import { readerAgents } from "@agenthub/core/agents";
 import { loadConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
-import { saveReport } from "@agenthub/core/report";
+import { isBlocking, saveReport } from "@agenthub/core/report";
+import { DENIED_PREFIX } from "@agenthub/core/security";
 import { createRuntime } from "@agenthub/core/runtime/index";
 
 try {
@@ -19,6 +20,7 @@ const runtime = await createRuntime(cfg);
 const t0 = Date.now();
 const events: HubEvent[] = [];
 const callAgent = new Map<string, string>();
+const unusable = new Set<string>();
 
 console.log(`▶ check việc — runtime=${cfg.runtime}, budget=${cfg.maxAiCredits} credits, ${agents.length} agent`);
 process.on("SIGINT", () => void runtime.stop().then(() => process.exit(130)));
@@ -34,13 +36,21 @@ for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || 
       console.log(`    ↳ ${ev.agent} → ${ev.server}/${ev.tool}`);
       callAgent.set(ev.callId, ev.agent);
       break;
-    case "tool.completed":
-      if (ev.error) console.log(`    ✗ ${callAgent.get(ev.callId) ?? "?"}: ${ev.error}`);
+    case "tool.completed": {
+      const agent = callAgent.get(ev.callId) ?? "?";
+      // A denied call already printed its ⛔ line.
+      if (ev.error && !ev.error.startsWith(DENIED_PREFIX)) console.log(`    ✗ ${agent}: ${ev.error}`);
+      if (ev.error && isBlocking(ev.error)) unusable.add(agent);
       break;
-    case "agent.completed":
-      console.log(`  ✓ ${ev.agent}${ev.durationMs ? ` (${(ev.durationMs / 1000).toFixed(1)}s)` : ""}`);
+    }
+    case "agent.completed": {
+      const time = ev.durationMs ? ` (${(ev.durationMs / 1000).toFixed(1)}s)` : "";
+      // The agent ended, but a blocking tool error means its source gave no data (the report lists it as failed).
+      console.log(unusable.has(ev.agent) ? `  ⚠ ${ev.agent}${time}: không lấy được dữ liệu (xem báo cáo)` : `  ✓ ${ev.agent}${time}`);
       break;
+    }
     case "agent.failed":
+      unusable.add(ev.agent);
       console.log(`  ✗ ${ev.agent}: ${ev.error}`);
       break;
     case "approval.requested":
