@@ -461,3 +461,108 @@ Mẫu mỗi mục:
 ## 2026-11-26 (lần 8) — tài liệu
 - Thấy: tiêu đề `docs/handoff-copilot.md` ghi "lần 6", nội dung là bàn giao cho lần 8 (§3 bước 2 "lần 8").
 - Đề xuất: đặt tiêu đề theo số lần chạy Work kế tiếp khi viết handoff mới.
+
+## 2026-11-26 (lần 9) — cài đặt, test, `pnpm dashboard`
+- Thấy: base `0f4b421` (= `origin/main`). `pnpm install` exit 0, `pnpm typecheck` exit 0, `pnpm test` 51/51 (~13s).
+  handoff-copilot.md §1 ghi 39/39, §3 ghi 51: số đúng là 51.
+- Thấy: ở Work, pnpm chạy qua `corepack pnpm` (không có `pnpm` trên PATH). `corepack pnpm dashboard` lỗi
+  `'pnpm' is not recognized…` vì script `dashboard` (`package.json` dòng 17) gọi `pnpm` trần.
+  Cách chạy được: `corepack pnpm --filter @agenthub/web build` rồi `corepack pnpm exec tsx apps/server/src/main.ts`
+  với `AGENTHUB_RUNTIME=copilot`. Build in cảnh báo vô hại `"use client"` của `@xyflow`.
+- Đề xuất: script `dashboard` không gọi `pnpm` trần, ví dụ `vite build` qua `pnpm -C apps/web exec`, hoặc
+  `npm run`/`corepack pnpm`, hoặc một script `tsx` gọi build. Tuỳ chọn, Work vẫn chạy được bằng 2 lệnh trên.
+
+## 2026-11-26 (lần 9) — dashboard: đăng nhập, sơ đồ, giao diện
+- Thấy: tab Đăng nhập (`/api/auth`): github/code-reader, ado/board-reader, azure/cloud-reader `ok`;
+  workiq/comms-reader `unknown` ("Chưa rõ", chỉ biết khi chạy). Không tốn credit.
+- Thấy: sơ đồ 14 node, 16 cạnh: orchestrator, 4 reader + 4 server, 3 writer (comms-, board-, code-writer), qa +
+  server playwright.
+- Thấy: console trình duyệt sau khi tải lại: 0 lỗi, 0 cảnh báo. Rộng 600px và 800px: không tràn ngang
+  (`scrollWidth` = `clientWidth`).
+- Thấy: không ghi nhận nhấp nháy cạnh (không kiểm bằng mắt từng khung hình).
+- Đề xuất: không.
+
+## 2026-11-26 (lần 9) — "Check việc" từ dashboard (runtime `copilot`)
+- Thấy: 52.8s, AI Credits 31.39 / 120 (lần 8: 33.11, 55.0s), 6 mục (3 cần xử lý): Azure DevOps 2, Outlook 1, Azure 3,
+  GitHub 0, Teams 0. Báo cáo 0 lỗi, 0 cảnh báo, "Bị chặn" 1.
+- Thấy: 4 agent bắt đầu cách nhau ≤2ms (song song). code-reader 18.9s (7 lời gọi), board-reader 23.6s (7),
+  comms-reader 51.1s (2), cloud-reader 51.7s (11). Credit theo agent: code 5.74, board 9.35, comms 7.29, cloud 9.01.
+- Thấy: audit 27 bản ghi, 26 `allow`, 1 `deny`, không tool ghi nào được `allow`. `deny` duy nhất:
+  `github-list_workflow_runs_placeholder` (không có trong allowlist), code-reader tự sửa như lần 8 (mục A).
+- Thấy (lỗi): comms-reader trả 1 mục `source: "outlook"` với `title` `""`, `summary` `""`, `suggestedAction` `""`,
+  `link` null, `timestamp` null, `priority: "low"`, `actionRequired: false`. Dashboard và báo cáo hiện thẻ rỗng chỉ có
+  "Thấp" + "Outlook". Có vẻ model dùng một mục rỗng thay cho "không có gì". Schema `BriefItem`
+  (`packages/core/src/brief.ts` dòng 8–9) cho phép chuỗi rỗng.
+- Mock đang giả định: mọi mục đều có `title`/`summary`.
+- Đề xuất: (1) task comms-reader (hoặc luật chung cho reader) nói rõ "không có gì thì trả `items: []`";
+  (2) orchestrator bỏ mục có `title` và `summary` đều rỗng, ghi 1 dòng cảnh báo; (3) thêm 1 mục rỗng vào một kịch bản
+  mock để test. Không nên đổi schema sang `min(1)` vì sai schema làm cả agent `agent.failed`.
+
+## 2026-11-26 (lần 9) — `list-tools --writers`
+- Thấy: `pnpm list-tools --writers` sinh `docs/mcp-tools-writers.md` (runtime `copilot`). 3 server connected:
+  workiq (comms-writer) 13 tool, ado (board-writer) 43 tool, github (code-writer) 49 tool.
+- Thấy: đối chiếu `packages/core/src/agents.ts` dòng 240–244:
+  - `COMMS_WRITE` `create_entity`, `COMMS_READ` `search_paths`, `get_schema`: có đủ.
+  - `CODE_WRITE` `create_branch`, `create_pull_request`, `add_issue_comment`, `CODE_READ` `get_me`, `list_branches`:
+    có đủ.
+  - **`BOARD_WRITE` `wit_add_work_item_comment`, `wit_update_work_item`: không có trên server thật.** Tên thật:
+    `ado-wit_work_item_comment_write` (mô tả: thêm hoặc sửa comment, theo `action`) và `ado-wit_work_item_write`
+    (tạo hoặc sửa work item, theo `action`). Đọc work item: `ado-wit_work_item`. board-writer đang có `readTools: []`
+    (dòng 280).
+- Thấy: cột "Loại (đoán)" sai ở vài tool (chỉ hiển thị, không tool nào trong allowlist reader):
+  `workiq-do_action`, `ado-wiki_upsert_page`, `ado-wit_work_item_attachment_link`, `github-request_copilot_review`
+  đoán `read` nhưng là ghi/hành động; `ado-pipelines_run` đoán `write` nhưng mô tả là đọc.
+- Mock đang giả định: `packages/mock-mcp/src/server.ts` (dòng ~159) và `fixtures/scenarios/act-board-writer.jsonl`
+  (dòng 2) dùng `wit_add_work_item_comment`.
+- Đề xuất: `BOARD_WRITE` đổi sang `wit_work_item_comment_write` (và `wit_work_item_write` nếu cần sửa trường);
+  board-writer thêm `readTools` `wit_work_item`. Tuỳ chọn: gate chỉ cho `action` cụ thể (ví dụ không cho tạo work item
+  mới), vì một tên tool gộp nhiều hành động. Cập nhật mock-mcp + fixture theo tên thật. Đây là thay đổi quyền, ghi
+  rõ trong commit message.
+
+## 2026-11-26 (lần 9) — giao việc từ dashboard (board-writer, chỉ Từ chối)
+- Thấy: không có mục GitHub; mục Azure hiện "Chưa có agent ghi cho nguồn này". Giao việc cho mục Azure DevOps duy nhất
+  có nút.
+- Thấy: board-writer 8.4s, 1.505 credit, **0 lời gọi tool**, không có yêu cầu duyệt, 0 dòng audit. Event:
+  `agent.started` → `agent.message` → `usage` → `action.result` (`summary` có chữ, `link` null) → `agent.completed`.
+- Thấy: model trả lời là không có tool ghi ADO, chỉ có git, curl, gh. `runtime/sdk.ts` (dòng ~74, `sessionTools`)
+  chỉ đưa tên `mcp:` vào `availableTools`, nên có lẽ model nói theo prompt môi trường mặc định của CLI.
+- Thấy: Duyệt/Từ chối **chưa kiểm được** vì không có lời gọi ghi nào. Work không bấm Duyệt.
+- Đề xuất: sửa tên `BOARD_WRITE` (mục trên), rồi Work chạy lại bước này. Xác nhận các tool built-in (shell, git, gh,
+  curl) không được đưa vào session writer và `decide()` từ chối nếu model gọi.
+
+## 2026-11-26 (lần 9) — `pnpm playwright-smoke`
+- Thấy: exit 0, `Smoke Playwright: ok`. `reports/playwright-smoke/index.html` nhúng `smoke.png` (ảnh + link),
+  `<video src="smoke.webm">` (163 KB), link trace `traces/trace-*.trace` (22 KB). Thêm `.network` (0 B), 22 jpeg
+  screencast, 2 `page-*.yml`.
+- Đề xuất: không.
+
+## 2026-11-26 (lần 9) — Nghiệm thu (QA) từ dashboard
+- Thấy: 29.8s, 6.49 credit, 14 lời gọi Playwright, đều `allow` (14 dòng audit `qa`), 0 chặn. 3/3 tiêu chí Đạt, có ảnh
+  `ac-1.png`, `ac-2.png`, `ac-3.png`. Node qa "Có cảnh báo". Thư mục `reports/qa-<ngày>-<giờ>/` 49 file (`qa.files` 48,
+  thiếu `index.html` vì ghi sau).
+- Thấy: model gọi song song theo lượt: (`start_tracing`, `start_video`, `navigate`) → (`video_chapter` 1, `snapshot`)
+  → (`take_screenshot` ac-1, `video_chapter` 2, `click`) → (`take_screenshot` ac-2, `video_chapter` 3,
+  `take_screenshot` ac-3, `stop_video`, `stop_tracing`, `close`).
+  - `browser_video_chapter` cuối lỗi `Target page, context or browser has been closed` (chạy cùng lượt `browser_close`).
+  - Lớp phủ chapter dính vào ảnh: `ac-1.png` có lớp phủ "Tiêu chí 2" đang hiện; `ac-3.png` có lớp phủ "Tiêu chí 3",
+    phần trên trang bị mờ.
+  - Click một link `target=_blank` mở tab mới tới origin khác: `--allowed-origins` chặn, nhưng sinh thêm `qa-1.webm`
+    (55 KB) bên cạnh `qa.webm` (1.2 MB).
+- Thấy (lỗi): `index.html` nhúng `<video src="qa-1.webm">` thay vì `qa.webm`. `packages/core/src/qa.ts` dòng 136
+  lấy file `.webm` đầu tiên theo thứ tự tên.
+- Thấy (lỗi): thanh credit dashboard hiện `32.9 / 120` = brief 31.39 + giao việc 1.505, thiếu 6.49 của QA.
+  `apps/web/src/state.ts` dòng 209 chỉ cộng `reader` và `writer`, không cộng `tester`.
+- Thấy: `GET /qa/<lần>/` trả 200 với CSP chặt; đường dẫn
+  `..` trả 404. `HEAD` trả 404 (chỉ định tuyến `GET`), nhỏ.
+- Mock đang giả định: model gọi tuần tự, không mở tab mới, chỉ có một video.
+- Đề xuất:
+  1. Task qa (`qa.ts` dòng ~80–83): gọi từng tool một, không song song; chụp ảnh tiêu chí n trước `video_chapter`
+     n+1 (hoặc sau khi lớp phủ tắt, ví dụ `duration` ngắn rồi `browser_wait_for`); `stop_video`, `stop_tracing`,
+     `close` chỉ sau tiêu chí cuối; không click link `target=_blank`, kiểm `href` trong snapshot.
+  2. `renderQaReport`: ưu tiên `qa.webm`, hoặc liệt kê mọi video.
+  3. `state.ts`: cộng `sum("tester")` vào `usedAiCredits`.
+  4. Tuỳ chọn: server trả `HEAD` cho `/qa/*`.
+  5. Mock: thêm kịch bản qa có lời gọi lỗi và 2 file `.webm` để test mục 2.
+
+## 2026-11-26 (lần 9) — tổng credit
+- Thấy: brief 31.39 + giao việc 1.505 + QA 6.49 ≈ 39.39 AI Credits cho cả lần 9. Không có lần chạy lại.
