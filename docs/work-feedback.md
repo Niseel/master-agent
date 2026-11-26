@@ -252,3 +252,94 @@ Mẫu mỗi mục:
 - Thấy: `pnpm brief *> file` trong PowerShell giải mã UTF-8 theo code page của console, tiếng Việt bị lỗi. Đặt
   `[Console]::OutputEncoding = [Text.Encoding]::UTF8` trước.
 - Đề xuất: thêm hai ghi chú cuối vào `docs/WORK.md`.
+
+## 2026-11-26 (lần 6) — `availableTools` theo allowlist (`pnpm smoke <agent> --tools`)
+- Thấy: runtime `copilot`, cả 4 agent exit 0, in `Tất cả trong allowlist.`, không có `github-mcp-server-*`,
+  `totalPremiumRequests: 0`, `totalNanoAiu: 0` (không tốn credit).
+- Thấy: số tool model thấy:
+  - comms-reader 5: `workiq-ask`, `workiq-fetch`, `workiq-get_schema`, `workiq-retrieve`, `workiq-search_paths`
+  - code-reader 15: `github-*`, đúng `GITHUB_READ`
+  - cloud-reader 4: `azure-group_list`, `azure-group_resource_list`, `azure-monitor`, `azure-subscription_list`
+  - board-reader 7: `ado-*`, đúng `ADO_READ`
+- Thấy: server vẫn tải đủ tool (`session.mcp_server_tools_loaded`, ví dụ github 32). `session.info`
+  (`infoType: "configuration"`) báo `Disabled tools: ...` gồm tool built-in của CLI (`create`, `edit`, ...) và tool
+  `github-*` ngoài allowlist. `mcp:<tên>` khớp đúng trên runtime công ty.
+- Đề xuất: không sửa gì.
+
+## 2026-11-26 (lần 6) — brief runtime `copilot`
+- Thấy: exit 0, 76.3s (tổng lệnh 78.2s), AI Credits 26.88 / 120 (lần 5: 40.06), 7 mục (1 cần xử lý), báo cáo ghi
+  0 lỗi, 0 cảnh báo. cloud-reader 19.3s, code-reader 20.4s, board-reader 24.7s, comms-reader 75.4s (lần 5: 31.2s).
+  Credit thấp hơn có lẽ vì cloud-reader dừng sau 1 lần gọi (lần 5: 12 lần, 48.0s); suy luận.
+- Thấy: audit 19 bản ghi, 18 `allow`, 1 `deny`, **0 `github-mcp-server-*`**, không tool ghi nào được `allow`.
+- Thấy: tham số thật (chỉ khoá):
+  - comms-reader: `workiq-ask` ×1 `{question}` (lần đầu gặp ở brief thật; mock khớp), `workiq-fetch` ×3
+    `{entityUrls}`, `workiq-retrieve` ×1 `{query, capabilities}`.
+  - code-reader: `get_me` ×1 `{}`, `search_pull_requests` ×2 `{owner, query, repo}` (lần 5: chỉ `{query}`),
+    `actions_list` ×2 `{method:"list_workflow_runs", owner, repo, perPage, workflow_runs_filter?}`,
+    `list_workflow_runs` ×1 → `deny` (mục dưới).
+  - board-reader: `wit_query` ×2 `{action:"wiql", project, wiql}`, `wit_work_item` `get_batch` ×1
+    `{action, ids, fields}`, `list_revisions` ×2 `{action, project, workItemId, top, skip}`, `list_comments` ×2
+    `{action, project, workItemId, top}`.
+  - cloud-reader: `azure-monitor` ×1 `{intent, command:"monitor_workspace_list", parameters:{subscription}}` → 401
+    (mục dưới).
+- Mock đang giả định: khớp.
+- Đề xuất: không sửa mock.
+
+## 2026-11-26 (lần 6) — code-reader gọi tool ngoài allowlist
+- Thấy: code-reader gọi `github-list_workflow_runs` ×1. Tool này không có trên GitHub MCP (32 tool) và không có trong
+  `GITHUB_READ`; model không thấy nó (smoke `--tools` ở trên). Model tự đoán tên từ `method` của `actions_list`.
+- Thấy: `decide()` → `deny`, reason `Tool github-list_workflow_runs không có trong allowlist của code-reader`. Báo cáo
+  hiện ở mục "Bị chặn". Model tự chuyển sang `actions_list` `method:"list_workflow_runs"` ×2, agent vẫn ok.
+- Thấy: console ghi `↳ code-reader → builtin/github-list_workflow_runs` (tên server `builtin` cho tool không thuộc
+  server nào).
+- Mock đang giả định: model chỉ gọi tool có trong session.
+- Đề xuất:
+  - Task `code-reader` (`agents.ts`): ghi rõ "workflow run: dùng `actions_list` với `method: \"list_workflow_runs\"`
+    (không có tool `list_workflow_runs` riêng)". Bớt một lượt model và mục "Bị chặn" giả.
+  - Tuỳ chọn: scenario fixture có 1 lần `deny` tên tool không tồn tại, để kiểm mục "Bị chặn" với tên lạ.
+
+## 2026-11-26 (lần 6) — azure (cloud-reader): 401, token `az` bị thu hồi
+- Thấy: cloud-reader gọi đúng 1 lần `monitor_workspace_list`, lỗi tool:
+  `MCP server 'azure': {"status":401,"message":"Azure credentials not found or unavailable. Please run 'az login' to authenticate, then try again. For the complete list of supported credentials, see: https://aka.ms/azmcp/auth. Details: AzureCl...`
+  Model dừng, không thử lại. Không lỗi cờ / `unknown arguments` với `@azure/mcp@4.0.0-beta.10`.
+- Thấy: nguyên nhân ở môi trường, không phải code. `az account get-access-token` (cùng `AZURE_CONFIG_DIR`) →
+  `AADSTS50173` `invalid_grant`: grant cấp trước khi đổi mật khẩu, bị thu hồi. `az account show` vẫn ok (đọc profile
+  cache), nên kiểm bằng `az account show` không đủ.
+- Thấy: Azure MCP dùng `AZURE_CONFIG_DIR` (biến mức Machine); board-reader dùng `ADO_AZURE_CONFIG_DIR` (`.env`) và vẫn ok.
+- Sửa ở Work: user chạy `az logout` rồi `az login` (tương tác) với đúng `AZURE_CONFIG_DIR`. Chưa chạy lại brief.
+- Mock đang giả định: Azure MCP luôn xác thực được.
+- Đề xuất:
+  - Mock / scenario: thêm lỗi tool cloud-reader đúng chuỗi trên (`{"status":401,"message":"Azure credentials not found or unavailable...`).
+  - Gợi ý trong `report.ts` (mục dưới) và `docs/WORK.md`: kiểm token bằng `az account get-access-token`, không phải
+    `az account show`.
+
+## 2026-11-26 (lần 6) — `report.ts`: lỗi tool không khớp HINT bị bỏ qua
+- Thấy: 401 ở trên không khớp `HINTS`, nên `summarize()` bỏ qua: báo cáo ghi "7 mục, 0 lỗi, 0 cảnh báo", cloud-reader
+  hiện ✓ (19.3s). Người đọc không biết nguồn Azure trống. Console có dòng `✗ cloud-reader: MCP server 'azure': ...`
+  nhưng báo cáo HTML không có.
+- Thấy: 2 item ở mục Azure của báo cáo có lẽ do comms-reader lấy từ mail cảnh báo (suy luận; audit không ghi agent
+  sinh item). Thêm HINT `blocking` chỉ bỏ item của cloud-reader.
+- Đề xuất:
+  - `HINTS`: thêm `{ re: /"status":\s*401|Azure credentials not found|AADSTS50173|invalid_grant/, kind: "blocking",
+    text: "Token az hết hạn/bị thu hồi: chạy az logout + az login (đúng AZURE_CONFIG_DIR); kiểm bằng az account get-access-token." }`.
+  - Tuỳ chọn: lỗi tool không khớp HINT nào vẫn hiện dưới "Cảnh báo" (dạng `agent: lỗi`, cắt ngắn), để báo cáo không
+    ghi 0 lỗi khi agent có lỗi tool. Test bằng scenario ở mục trên.
+
+## 2026-11-26 — Playwright ở Work
+- Thấy: `npx -y @playwright/mcp@0.0.86 install-browser ffmpeg` exit 0, tải FFmpeg v1013 (1.6 MiB) từ
+  `cdn.playwright.dev`, không vướng proxy. Sau lệnh, `%LOCALAPPDATA%\ms-playwright` chỉ còn `ffmpeg-1013`,
+  `winldd-1007` (thư mục browser cũ bị xoá; smoke dùng Chrome cài sẵn nên không ảnh hưởng).
+- Thấy: `pnpm playwright-smoke` exit 0, 13.5s, Chrome mặc định (`PLAYWRIGHT_BROWSER` không đặt), 38 tool, mọi bước ok.
+  `smoke.png` đúng trang brief mock (runtime mock, 0.00 / 120). Có `smoke.webm`, trace + 17 khung `traces/screencast/`.
+- Thấy: `pnpm install` cảnh báo `Ignored build scripts: esbuild, koffi` (không ảnh hưởng test/smoke).
+- Đề xuất: không sửa gì.
+
+## 2026-11-26 — github (code-reader), `GITHUB_MCP_TOKEN` rỗng
+- Thấy: `.env` đặt `GITHUB_MCP_TOKEN=` (khôi phục nguyên byte sau khi chạy), `pnpm smoke code-reader --tools`: exit 0,
+  server `github` `pending → connected` (`configSource: "user"`), `toolCount: 32`, model thấy 15,
+  `Tất cả trong allowlist.`, không lỗi, không `needs-auth`. Giống hệt lần có token. Dòng `auth:` báo
+  `authType: "gh-cli"`.
+- Thấy: khi token rỗng `agents.ts` không gửi header `Authorization`. Suy luận: Copilot CLI tự gắn xác thực của nó
+  cho `api.githubcopilot.com/mcp/`. Chưa kiểm lời gọi tool khi token rỗng (tốn credit).
+- Đề xuất: không cần `missingConfig` cho `GITHUB_MCP_TOKEN`. Tuỳ chọn: ghi trong `docs/WORK.md` là token không bắt buộc
+  khi Copilot CLI đã đăng nhập; nếu muốn chắc, Work chạy 1 brief với token rỗng và so audit code-reader.

@@ -191,7 +191,7 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] ADO Remote MCP trong Copilot CLI: "liệt kê work item giao cho tôi thay đổi trong 24h". — 2026-11-23: connected (OAuth qua profile `az` riêng, `ADO_AZURE_CONFIG_DIR`), `core_list_projects` chạy được. 2026-11-25: `pnpm brief` (copilot) board-reader ok.
 - [x] GitHub MCP: "PR đang chờ tôi review". — 2026-11-23: connected, tool đọc chạy được.
 - [x] Azure MCP: "cảnh báo / lỗi trong Log Analytics workspace X trong 24h". — 2026-11-25: ok, 4 tool (`monitor` gộp 22 lệnh con, không có lệnh liệt kê alert); allowlist `AZURE_READ`.
-- [ ] Playwright MCP: quay thử video một trang bất kỳ. — [Home] 2026-11-26: `pnpm playwright-smoke` (trang mock qua `127.0.0.1`), ghim `@playwright/mcp@0.0.86`, tên tool/cờ thật ở bảng MCP servers; ảnh + trace ok, video chờ cài FFmpeg của Playwright. [Work] chạy lại cùng script (tải browser/FFmpeg qua proxy công ty).
+- [x] Playwright MCP: quay thử video một trang bất kỳ. — [Home] 2026-11-26: `pnpm playwright-smoke` (trang mock qua `127.0.0.1`), ghim `@playwright/mcp@0.0.86`, tên tool/cờ thật ở bảng MCP servers; ảnh + trace ok, video chờ cài FFmpeg của Playwright. [Work] chạy lại cùng script (tải browser/FFmpeg qua proxy công ty). — xong 2026-11-26 (Work): FFmpeg tải ok, `pnpm playwright-smoke` exit 0, 13.5s, có `smoke.webm`, ảnh, trace.
 - [x] [Work] Liệt kê **tên tool thật** (chạy `pnpm list-tools`, xem docs/WORK.md) của từng MCP server (để làm allowlist) → `docs/mcp-tools.md`, phân loại đọc/ghi. — workiq, ado, github, azure xong.
 - [x] Script tối thiểu `scripts/sdk-smoke.ts`: tạo session bằng SDK, gọi 1 MCP, in event ra console.
 
@@ -231,8 +231,10 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] [Work] Chạy lại `pnpm brief` runtime `copilot` (~39 AI Credits) để xác nhận workspace thứ hai đọc được qua agent. — 2026-11-25 lần 5: workspace thứ hai đọc được (`monitor_table_list` + `monitor_workspace_log_query`, không lỗi), 4/4 agent ok, 49.5s, 40.06/120 AI Credits, không có mục "Cảnh báo". Audit: 1 `deny` (comms-reader gọi built-in `github-mcp-server-*`), không tool ghi nào được `allow`.
 - [x] [Home] Theo work-feedback 2026-11-25 (lần 5): `availableTools` lấy từ `readTools` (`mcp:<tên tool>`) để model không thấy built-in `github-mcp-server-*`; mock workiq `retrieve` nhận `capabilities`; xem handoff-claude.md §3. — xong 2026-11-26: `sessionTools()` trong `sdk.ts`; kiểm `byok` + mock: model chỉ thấy tool trong allowlist (`pnpm smoke <agent> --tools`).
 - [x] [Home] Ghim `@azure/mcp@4.0.0-beta.10` (bản Work dùng lần 1–5, đang `@latest`); kiểm `--help` còn `--namespace`, `--read-only`; cập nhật docs/WORK.md. — xong 2026-11-26 (`AZURE_MCP_VERSION`).
-- [ ] [Work] Sau khi Home đổi `availableTools` + ghim `@azure/mcp`: chạy lại `pnpm brief` runtime `copilot`, audit không còn `github-mcp-server-*`, `cloud-reader` không lỗi cờ.
-- [ ] [Work] Tuỳ chọn: `pnpm smoke code-reader` với `GITHUB_MCP_TOKEN` rỗng, ghi trạng thái server + mã lỗi vào work-feedback.
+- [x] [Work] Sau khi Home đổi `availableTools` + ghim `@azure/mcp`: chạy lại `pnpm brief` runtime `copilot`, audit không còn `github-mcp-server-*`, `cloud-reader` không lỗi cờ. — 2026-11-26 lần 6: 76.3s, 26.88/120 AI Credits, 7 mục; audit 19 bản ghi (18 `allow`, 1 `deny`), không còn `github-mcp-server-*`, không lỗi cờ. `deny` = code-reader gọi `github-list_workflow_runs` (tool không có). cloud-reader nhận 401 do token `az` bị thu hồi (AADSTS50173, môi trường), báo cáo vẫn ✓.
+- [x] [Work] Tuỳ chọn: `pnpm smoke code-reader` với `GITHUB_MCP_TOKEN` rỗng, ghi trạng thái server + mã lỗi vào work-feedback. — 2026-11-26: server connected, 32 tool, model thấy 15, `authType:"gh-cli"`, không lỗi.
+- [ ] [Home] Theo work-feedback 2026-11-26 (lần 6): HINT chặn cho 401/`AADSTS50173`/`invalid_grant` + scenario mock 401; tuỳ chọn hiện lỗi tool không khớp HINT ở "Cảnh báo"; task code-reader nêu `actions_list` `method:"list_workflow_runs"`; xem handoff-claude.md §3.
+- [ ] [Work] Sau khi người dùng `az logout` + `az login` (đúng `AZURE_CONFIG_DIR`): chạy lại `pnpm brief`, kiểm cloud-reader gọi chuỗi `monitor_*` không lỗi như lần 5.
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 
