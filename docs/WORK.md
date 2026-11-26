@@ -135,7 +135,7 @@ $env:PLAYWRIGHT_BROWSER = "msedge"; pnpm playwright-smoke # nếu máy không c�
 
 Script mở một trang mẫu (dữ liệu tự tạo) qua `127.0.0.1`, chụp ảnh, quay video, lưu trace vào
 `reports/playwright-smoke/`. Kết quả mong đợi: dòng cuối `Smoke Playwright: ok`, có `smoke.png`, `smoke.webm`,
-`traces/`. Lỗi tải browser/FFmpeg (proxy công ty): ghi thông báo lỗi vào `docs/work-feedback.md`.
+`traces/`, `index.html` (báo cáo nghiệm thu dựng từ các file này). Lỗi tải browser/FFmpeg (proxy công ty): ghi thông báo lỗi vào `docs/work-feedback.md`.
 
 ## 5c. Dashboard (Phase 2)
 
@@ -168,6 +168,17 @@ trong báo cáo check việc mà người dùng chọn. **Mọi tool ghi chờ d
 2. Dùng: chạy check việc → tab **Việc cần làm** → chọn mục → **Giao việc** → sửa lời giao → **Soạn**. Tab **Duyệt**
    tự mở khi agent muốn gọi tool ghi. **Duyệt = gửi thật.** Từ chối thì agent dừng, không thử cách khác.
 3. Mỗi lần giao việc là một session riêng (tối thiểu 30 AI Credits theo giới hạn runtime; dùng thực tế thường ít hơn).
+
+## 5e. Nghiệm thu (Phase 4)
+
+Tab **Nghiệm thu** trên dashboard: nhập URL trang cần kiểm và tiêu chí (mỗi dòng một tiêu chí) → **Chạy nghiệm thu**.
+Agent `qa` mở trang bằng Playwright (headless), kiểm từng tiêu chí, quay video (cần FFmpeg, §5b), chụp ảnh, lưu trace.
+Kết quả: `reports/qa-<thời gian>/index.html` (mở từ link trên tab, hoặc mở file trực tiếp), cùng thư mục có ảnh, `qa.webm`,
+`traces/` (`npx playwright show-trace <file>`).
+
+- Chỉ mở được đúng origin của URL đã nhập. Không chạy JS tuỳ ý, không tải file lên, không mở tab khác.
+- Không nhập mật khẩu hay tài khoản thật vào trang được kiểm. Chỉ kiểm trang local / staging.
+- Một lượt là một session (trần 30 AI Credits theo giới hạn runtime).
 
 ## 6. Gửi phản hồi về Home
 

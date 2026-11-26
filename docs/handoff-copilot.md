@@ -1,4 +1,4 @@
-# Bàn giao Home → Work (2026-11-26, cho lần chạy Work 9 + Phase 3)
+# Bàn giao Home → Work (2026-11-26, cho lần chạy Work 9 + Phase 3 + Phase 4)
 
 > Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md) (mục 5c).
 > Bàn giao chiều ngược lại (Work → Home): [handoff-claude.md](handoff-claude.md).
@@ -15,7 +15,9 @@
 
 - Phase 1 xong (lần 8 đạt tiêu chí). Phase 2 (dashboard) xong ở Home với `mock`, chờ Work kiểm với `copilot`.
 - Phase 3 (agent ghi có duyệt) xong ở Home với `mock`, chờ Work lấy tên tool ghi thật (§3 bước 5–6).
-  **Nếu đã chạy xong bước 1–4 của lần 9:** `git pull`, `pnpm install`, `pnpm test`, rồi chỉ làm bước 5–6.
+- Phase 4 (agent nghiệm thu `qa`, Playwright) xong ở Home với `mock`; báo cáo nghiệm thu đã dựng từ file Playwright thật
+  (ảnh + trace; Home chưa có FFmpeg nên chưa có video). Chờ Work (§3 bước 7).
+  **Nếu đã chạy xong bước 1–4 của lần 9:** `git pull`, `pnpm install`, `pnpm test`, rồi chỉ làm bước 5–7.
 - Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 39/39, `pnpm brief` (mock) 3 kịch bản, dashboard trên trình duyệt
   với `brief-ok` (duyệt / từ chối, báo cáo) và `brief-auth` (3 nguồn "Cần bạn xử lý", tab Đăng nhập).
 
@@ -32,14 +34,16 @@
 | Phase 3: `security.ts` | Writer: tool trong `writeTools` → hỏi người dùng; trong `readTools` → cho; còn lại → từ chối. Agent đọc không đổi. | §3 bước 6 |
 | Phase 3: dashboard | Tab **Việc cần làm**: chọn mục báo cáo → giao cho agent ghi → tab Duyệt. `POST /api/act`. | §3 bước 6 |
 | `scripts/list-tools.ts` | Cờ `--writers` ghi `docs/mcp-tools-writers.md`. | §3 bước 5 |
+| Phase 4: `packages/core/src/qa.ts` (mới) | Agent `qa` (kind `tester`): Playwright MCP 0.0.86 headless, `--isolated`, `--allowed-origins`; 22 tool trình duyệt, `browser_navigate` chỉ tới origin được kiểm. Báo cáo `reports/qa-<thời gian>/index.html`. | §3 bước 7 |
+| Phase 4: dashboard + `playwright-smoke` | Tab **Nghiệm thu**, `POST /api/qa`, `GET /qa/<lượt>/`. Smoke ghi thêm `index.html`. | §3 bước 7 |
 
 Quyền của agent đọc không đổi: `readTools`, danh tính Azure, cờ `--read-only` giữ nguyên. Quyền mới: 3 agent ghi,
-mọi lần ghi đều chờ người dùng duyệt.
+mọi lần ghi đều chờ người dùng duyệt; agent `qa` điều khiển trình duyệt headless chỉ trên trang được kiểm.
 
 ## 3. Việc ở Work (theo thứ tự)
 
 1. **Cài đặt:** `git pull`, `pnpm install` (có package mới: react, vite, @xyflow/react; ghi lại nếu proxy chặn),
-   `pnpm typecheck`, `pnpm test` (45 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
+   `pnpm typecheck`, `pnpm test` (51 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
    Tuỳ chọn: `pnpm brief` với `AGENTHUB_RUNTIME=mock` ghi `reports/brief-<ngày>-mock.html`, không đụng báo cáo thật.
 2. **Dashboard, chưa chạy (không tốn credit):**
    ```powershell
@@ -69,7 +73,15 @@ mọi lần ghi đều chờ người dùng duyệt.
    - agent có gọi đúng tool ghi không (tên tool, chỉ tên tham số, không chép nội dung);
    - sau Từ chối, agent có dừng không, kết quả trong Chi tiết; audit có `ask` rồi `reject`;
    - nếu agent không thấy tool nào (tên sai): thông báo lỗi.
-7. **Ghi và đẩy về:**
+7. **Nghiệm thu (khoảng 30 AI Credits trần):**
+   - `pnpm playwright-smoke`: mong đợi `Smoke Playwright: ok`; mở `reports/playwright-smoke/index.html`, có ảnh, video
+     phát được, link trace. Ghi lại thời gian, có lỗi không.
+   - Dashboard (runtime `copilot`), sau một lượt check việc: tab **Nghiệm thu**, giữ URL mặc định
+     (`http://127.0.0.1:4317/report`, trang báo cáo local) và 3 tiêu chí mẫu → **Chạy nghiệm thu**. Ghi lại: số tool đã
+     gọi, có tool nào bị chặn (tên tool + lý do), kết quả từng tiêu chí (Đạt / Không đạt / Không kiểm được), có
+     `ac-*.png`, `qa.webm`, `traces/` trong `reports/qa-*/` không, video có chapter không, thời gian, AI Credits.
+     Không chụp màn hình báo cáo vào repo (trang báo cáo có dữ liệu thật).
+8. **Ghi và đẩy về:**
    - `docs/step0-results.md` (thêm dòng "Dashboard runtime copilot"), `docs/work-feedback.md` (mục "lần 9"), dòng `[Work]`
      Phase 2 trong `PLAN.md`.
    - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home (góp ý giao diện ghi dạng cấu trúc).

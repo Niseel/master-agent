@@ -284,8 +284,9 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [ ] Luồng ví dụ: story ADO → thu thập context (PR liên quan, thảo luận Teams) → phát hiện điểm chưa rõ → nháp câu hỏi Teams → duyệt → gửi → (theo dõi trả lời ở lần chạy sau).
 
 ### Phase 4 — Nghiệm thu bằng Playwright
-- [ ] Agent `qa`: nhận kịch bản kiểm thử (từ acceptance criteria của story ADO), chạy Playwright MCP với `--caps=devtools`, quay video (`browser_start_video` / `browser_stop_video`, chapter card cho từng bước), chụp ảnh, `--save-trace`.
-- [ ] Sinh báo cáo HTML nghiệm thu: pass/fail từng tiêu chí, ảnh, video nhúng, link trace.
+- [x] Agent `qa`: nhận kịch bản kiểm thử (từ acceptance criteria của story ADO), chạy Playwright MCP với `--caps=devtools`, quay video (`browser_start_video` / `browser_stop_video`, chapter card cho từng bước), chụp ảnh, `--save-trace`. — 2026-11-26 (Home, `mock`): `packages/core/src/qa.ts`, kind `tester`. Tiêu chí nhập tay trên dashboard (mỗi dòng một tiêu chí; lấy từ story ADO để sau). Trace là tool `browser_start_tracing`/`stop_tracing` (không có `--save-trace`). Playwright MCP chạy `--headless --isolated --caps=devtools --allowed-origins <origin> --image-responses omit --output-dir <thư mục lượt>`. Gate: chỉ 22 tool trong `QA_TOOLS` (không `browser_evaluate`, `run_code_unsafe`, `file_upload`, `drop`, `tabs`, `network_request(s)`), `browser_navigate` chỉ tới đúng origin của trang được kiểm (kiểm `args.url` ở cả `onPreToolUse` và `onPermissionRequest`).
+- [x] Sinh báo cáo HTML nghiệm thu: pass/fail từng tiêu chí, ảnh, video nhúng, link trace. — `reports/qa-<thời gian>[-runtime]/index.html` nằm cạnh ảnh/video/trace; chỉ link file có thật trong thư mục, tên do model trả về không bao giờ thành đường dẫn khác. Dashboard: tab "Nghiệm thu", `POST /api/qa`, `GET /qa/<lượt>/<file>` (CSP không script, chỉ trong `qa-*`). `pnpm playwright-smoke` ghi luôn báo cáo nghiệm thu từ file thật (Home: ảnh + trace ok, video chờ FFmpeg).
+- [ ] [Work] Một lượt nghiệm thu runtime `copilot` trên dashboard (trang mẫu: `http://127.0.0.1:4317/report` sau một lượt check việc), xem docs/WORK.md §5e.
 - [ ] Tuỳ chọn: đính kèm link báo cáo vào work item ADO (qua approval).
 
 ### Phase 5 — Tuỳ chọn
