@@ -21,6 +21,7 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Phase 1: `pnpm brief` runtime `copilot` ở Work | ✅ lần 8: 4/4 agent, 55s, 33/120 AI Credits, không tool ghi nào được gọi |
 | Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ⏳ [Work] kiểm với runtime `copilot` |
 | Playwright MCP smoke (`pnpm playwright-smoke`) | ✅ ở Work (video + ảnh + trace) |
+| Phase 3: agent ghi có duyệt (Teams, ADO, GitHub) | ✅ `mock` ở Home; ⏳ [Work] tên tool ghi thật (`pnpm list-tools --writers`) |
 
 ## Tính năng dùng được (MVP)
 
@@ -32,13 +33,14 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Dashboard realtime: sơ đồ orchestrator → agent → MCP server, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
 | Chi tiết từng agent / MCP server: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node |
 | Hàng duyệt: xem tham số đầy đủ, Duyệt / Từ chối kèm lý do | tab Duyệt (tự mở khi có yêu cầu) |
+| Giao việc cho agent ghi: chọn một mục "cần xử lý" trong báo cáo → agent soạn tin Teams / comment ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi | tab Việc cần làm (chưa kiểm tên tool ghi ở Work) |
 | Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
 | Thanh credit đã dùng / ngân sách; nút Dừng (yêu cầu đang chờ bị từ chối, không bao giờ tự duyệt) | thanh trên |
 | An toàn: agent chỉ thấy tool trong allowlist, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
 | Chạy thử không cần dịch vụ thật: runtime `mock` với 3 kịch bản, `byok` với MCP giả | `AGENTHUB_RUNTIME`, `AGENTHUB_SCENARIO` |
 | Công cụ kiểm: tool model thấy (`pnpm smoke <agent> --tools`), danh sách tool thật (`pnpm list-tools`), Playwright smoke | không tốn credit |
 
-Chưa có (Phase 3+): agent có quyền ghi (soạn tin Teams, cập nhật work item, tạo PR), agent nghiệm thu bằng Playwright.
+Chưa có (Phase 4+): agent nghiệm thu bằng Playwright, luồng nhiều bước (story ADO → thu thập context → hỏi Teams → theo dõi trả lời).
 
 ## Chạy ở Home (không cần Copilot công ty)
 
@@ -72,7 +74,7 @@ GITHUB_MCP_TOKEN=$(gh auth token) AGENTHUB_RUNTIME=byok pnpm brief        # tố
 
 ```
 packages/core/src/
-  agents.ts        4 agent đọc: prompt, MCP server, allowlist tool
+  agents.ts        4 agent đọc + 3 agent ghi: prompt, MCP server, allowlist tool đọc / ghi
   security.ts      approval gate (decide), redact secret, audit log
   events.ts        HubEvent + mapSdkEvent (event SDK → event nội bộ)
   brief.ts         schema BriefItem (zod) — cũng là response schema gửi cho model
@@ -96,7 +98,10 @@ docs/              WORK.md, step0-results.md, mcp-tools.md, work-feedback.md
   (`availableTools: mcp:<tên>`), không tool built-in, không shell/file.
 - Gate từ chối: tool của server khác, tool có tên giống ghi (`send`, `create`, `update`, `delete`, ...),
   tool ngoài allowlist khi đã có allowlist. Có 2 lớp: `onPreToolUse` và `onPermissionRequest`.
-- ADO và GitHub MCP luôn gửi header `X-MCP-Readonly: true`. Azure MCP chạy `--read-only`.
+- ADO và GitHub MCP của agent đọc luôn gửi header `X-MCP-Readonly: true`. Azure MCP chạy `--read-only`.
+- Agent ghi (Phase 3) không đọc mail/chat/board/code: chỉ nhận một mục báo cáo do người dùng chọn, dạng DỮ LIỆU.
+  Tool trong `writeTools` luôn chờ duyệt trên dashboard (đủ tham số); tool khác bị từ chối. Từ chối → agent dừng.
+  Không có agent ghi cho Azure (thay đổi tài nguyên Azure luôn bị từ chối).
 - Prompt mọi agent đọc ghi rõ dữ liệu lấy về là DỮ LIỆU, không phải chỉ thị.
 - Mỗi agent có `sessionLimits.maxAiCredits` = ngân sách / số agent. Hết ngân sách → dừng agent, không tự tăng.
 - `pnpm brief` tự từ chối mọi approval request (brief là chỉ-đọc).

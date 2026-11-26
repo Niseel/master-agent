@@ -151,6 +151,24 @@ pnpm dashboard          # build apps/web rồi mở server; vào http://127.0.0.
 - Ctrl+C trong terminal để tắt. Nút **Dừng** dừng lượt chạy; yêu cầu duyệt đang chờ bị từ chối.
 - Không chụp màn hình dashboard vào repo (có dữ liệu thật). Chỉ ghi cấu trúc vào work-feedback.
 
+## 5d. Agent ghi (Phase 3)
+
+Ba agent ghi: `comms-writer` (gửi tin Teams qua Work IQ), `board-writer` (comment / cập nhật work item ADO),
+`code-writer` (comment, branch, PR GitHub). Agent ghi không đọc mail, chat, board hay code: chỉ nhận một mục
+trong báo cáo check việc mà người dùng chọn. **Mọi tool ghi chờ duyệt trên dashboard**, kèm đầy đủ tham số.
+
+1. Tên tool ghi chưa kiểm ở Work (`docs/mcp-tools.md` lấy với header chỉ-đọc nên không có tool ghi ADO/GitHub).
+   Lấy tên thật, không gửi prompt, không tốn credit:
+   ```powershell
+   $env:AGENTHUB_RUNTIME = "copilot"
+   pnpm list-tools --writers   # ghi docs/mcp-tools-writers.md
+   ```
+   So với `writeTools` / `readTools` của writer trong `packages/core/src/agents.ts`; tên nào không có thì ghi vào
+   work-feedback (Home sửa). Tên sai thì agent không thấy tool đó và gate từ chối: an toàn, nhưng không làm được việc.
+2. Dùng: chạy check việc → tab **Việc cần làm** → chọn mục → **Giao việc** → sửa lời giao → **Soạn**. Tab **Duyệt**
+   tự mở khi agent muốn gọi tool ghi. **Duyệt = gửi thật.** Từ chối thì agent dừng, không thử cách khác.
+3. Mỗi lần giao việc là một session riêng (tối thiểu 30 AI Credits theo giới hạn runtime; dùng thực tế thường ít hơn).
+
 ## 6. Gửi phản hồi về Home
 
 Ghi mọi khác biệt so với mock vào `docs/work-feedback.md` (dạng cấu trúc), cập nhật

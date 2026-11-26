@@ -274,9 +274,13 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 **Tiêu chí xong:** gõ "check việc" trên dashboard, thấy các agent sáng lên song song, edge nhấp nháy theo tool call thật, báo cáo hiện khi xong. — Home (`mock`) đạt 2026-11-26; chờ [Work] với tool call thật.
 
 ### Phase 3 — Agent có quyền ghi (có duyệt)
-- [ ] `comms-writer`: soạn nháp tin nhắn Teams (hỏi/chốt quyết định) → approval → gửi. Không có quyền đọc mail/Teams (nhận context đã được tóm tắt từ orchestrator).
-- [ ] `board-writer`: cập nhật trạng thái/comment work item ADO → approval.
-- [ ] `code-writer`: tạo branch/PR qua GitHub MCP → approval.
+- [x] `comms-writer`: soạn nháp tin nhắn Teams (hỏi/chốt quyết định) → approval → gửi. Không có quyền đọc mail/Teams (nhận context đã được tóm tắt từ orchestrator). — 2026-11-26 (Home, `mock`): nhận 1 mục báo cáo do người dùng chọn (dạng DỮ LIỆU), tool ghi `workiq-create_entity` (ask), đọc chỉ `search_paths`/`get_schema` (cấu trúc, không nội dung).
+- [x] `board-writer`: cập nhật trạng thái/comment work item ADO → approval. — 2026-11-26 (Home, `mock`): không có header `X-MCP-Readonly`, chỉ `writeTools` đi qua (mỗi lần đều ask), không tool đọc.
+- [x] `code-writer`: tạo branch/PR qua GitHub MCP → approval. — 2026-11-26 (Home, `mock`): `create_branch`, `create_pull_request`, `add_issue_comment` (ask); đọc `get_me`, `list_branches`.
+- [x] Gate cho writer: tool trong `writeTools` → ask, trong `readTools` → allow, còn lại deny; `availableTools` = hai danh sách. Writer không có `"*"`. Session writer chờ duyệt tối đa 15 phút (`WRITER_TIMEOUT_MS`).
+- [x] Dashboard: tab "Việc cần làm" (mục `actionRequired` của báo cáo → giao cho writer theo nguồn), `POST /api/act`, kết quả writer trong Chi tiết; lượt ghi nối tiếp lượt check việc, không thay báo cáo. Mock: kịch bản `act-<writer>`, tool ghi đi qua hàng duyệt như SDK (từ chối → `Denied by preToolUse hook: <lý do>`).
+- [ ] [Work] `pnpm list-tools --writers` → `docs/mcp-tools-writers.md`: tên tool ghi thật của Work IQ / ADO (không header chỉ-đọc) / GitHub; Home sửa `writeTools` cho khớp. Xem docs/WORK.md §5d.
+- [ ] [Work] Một lượt giao việc thật trên dashboard, **từ chối** ở bước duyệt: tab Duyệt hiện đủ tham số, agent dừng, audit có `ask` rồi `reject`. Gửi thật (Duyệt) chỉ khi người dùng tự chọn mục và nội dung.
 - [ ] Luồng ví dụ: story ADO → thu thập context (PR liên quan, thảo luận Teams) → phát hiện điểm chưa rõ → nháp câu hỏi Teams → duyệt → gửi → (theo dõi trả lời ở lần chạy sau).
 
 ### Phase 4 — Nghiệm thu bằng Playwright

@@ -8,7 +8,8 @@
 ## 1. Trạng thái
 
 > **Home 2026-11-26:** xong §3 mục 1 (mock), mục 2 chấp nhận, mục 3 (đánh số handoff theo lần chạy Work). Thêm: Phase 2
-> dashboard (`pnpm dashboard`). Việc Work tiếp theo: [handoff-copilot.md](handoff-copilot.md) (lần 9).
+> dashboard (`pnpm dashboard`), Phase 3 agent ghi có duyệt (`mock`). Việc Work tiếp theo: [handoff-copilot.md](handoff-copilot.md)
+> (lần 9 + Phase 3 bước 5–6).
 
 - Base `f100b61` (= `origin/main`). Work đã pull, `pnpm install` exit 0, `pnpm typecheck` sạch, `pnpm test` 34/34.
 - Mock (`brief-auth`, `brief-ok`, `brief-failures`): khớp số liệu Home ghi trong handoff-copilot.md §1.
