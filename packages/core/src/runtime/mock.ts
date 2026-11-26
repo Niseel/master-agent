@@ -43,7 +43,8 @@ export class MockRuntime implements AgentRuntime {
 
       if (ev.type === "tool.started") {
         const agent = byName.get(ev.agent)!;
-        const runtimeName = `${ev.server}-${ev.tool}`;
+        // A tool no server offers (model guessed the name) arrives as server "builtin" with the full name.
+        const runtimeName = ev.server === "builtin" ? ev.tool : `${ev.server}-${ev.tool}`;
         const { decision, reason } = decide(agent, runtimeName);
         audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: {}, decision, reason });
         callAgent.set(ev.callId, agent.name);

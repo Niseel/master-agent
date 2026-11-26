@@ -112,11 +112,13 @@ test("summarize: retried model errors are not failures; blocking errors drop the
   assert.ok(html.includes("<h2>Cảnh báo</h2>") && html.includes("Log Analytics Reader"));
 
   const auth = summarize(await run("brief-auth"));
-  assert.deepEqual(Object.keys(auth.failures).sort(), ["board-reader", "comms-reader"]);
+  assert.deepEqual(Object.keys(auth.failures).sort(), ["board-reader", "cloud-reader", "comms-reader"]);
+  assert.match(auth.failures["cloud-reader"], /"status":401/, "Azure 401 (revoked az token) is a failure, not a silent ✓");
   assert.match(auth.failures["comms-reader"], /^Tool lỗi: .*EULA/);
   assert.ok(!auth.items.some((i) => /EULA/.test(i.title)), "EULA item only restated the tool error");
   assert.equal(auth.items.length, 1);
-  assert.equal(auth.blocked?.length, 2);
+  assert.equal(auth.blocked?.length, 3);
+  assert.ok(auth.blocked!.some((b) => b.includes("github-list_workflow_runs")), "a guessed tool name is blocked");
   assert.equal(auth.usedAiCredits, 4.2);
 });
 
@@ -130,8 +132,27 @@ test("report hints: config and model mistakes", () => {
     ['{"status":403} InsufficientAccessError', "az login"],
     ["Could not find workspace 'w2'", "az login"],
     ["ErrorCode: BadArgumentError Inner: SyntaxError SYN0002 Query could not be parsed at 'last'", "lastSeen"],
+    [`MCP server 'azure': {"status":401,"message":"Azure credentials not found or unavailable."}`, "az account get-access-token"],
+    ["AADSTS50173: The provided grant has expired due to it being revoked (invalid_grant)", "az logout"],
   ]) assert.ok(hint(error)?.includes(want), error);
   assert.equal(isBlocking("Request rejected due to unknown arguments: x"), false);
   assert.equal(isBlocking("VS30063: You are not authorized"), true);
   assert.equal(isBlocking('{"status":403} InsufficientAccessError'), false, "one workspace must not drop the others");
+  assert.equal(isBlocking('{"status":401,"message":"Azure credentials not found"}'), true);
+});
+
+test("summarize: a tool error that matches no hint is a warning, unless the agent failed anyway", () => {
+  const long = "x".repeat(400);
+  const s = summarize([
+    { type: "tool.started", agent: "code-reader", server: "github", tool: "get_me", callId: "1" },
+    { type: "tool.completed", callId: "1", ok: false, error: "upstream connect error (mock)" },
+    { type: "tool.started", agent: "code-reader", server: "github", tool: "get_me", callId: "2" },
+    { type: "tool.completed", callId: "2", ok: false, error: long },
+    { type: "tool.started", agent: "board-reader", server: "ado", tool: "wit_query", callId: "3" },
+    { type: "tool.completed", callId: "3", ok: false, error: "something odd (mock)" },
+    { type: "agent.failed", agent: "board-reader", error: "Timeout" },
+    { type: "agent.result", agent: "code-reader", items: [] },
+  ]);
+  assert.deepEqual(s.warnings, ["code-reader: upstream connect error (mock)", `code-reader: ${"x".repeat(300)}…`]);
+  assert.deepEqual(s.failures, { "board-reader": "Timeout" });
 });
