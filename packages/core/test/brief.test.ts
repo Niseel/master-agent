@@ -33,11 +33,9 @@ test("mock e2e: write tool from reader is blocked, approval rejected, results va
   const ev = await run("brief-ok");
   const blocked = ev.find((e) => e.type === "tool.started" && e.tool === "do_action") as { callId: string } | undefined;
   assert.ok(blocked);
-  assert.deepEqual(ev.find((e) => e.type === "tool.completed" && e.callId === blocked.callId), {
-    type: "tool.completed",
-    callId: blocked.callId,
-    ok: false,
-  });
+  const done = ev.find((e) => e.type === "tool.completed" && e.callId === blocked.callId) as { ok: boolean; error?: string };
+  assert.equal(done.ok, false);
+  assert.match(done.error!, /^Denied by preToolUse hook: Tool workiq-do_action /);
   assert.ok(ev.some((e) => e.type === "approval.resolved" && e.decision === "reject"));
   const items = ev.flatMap((e) => (e.type === "agent.result" ? e.items : []));
   assert.equal(items.length, 10);
@@ -79,7 +77,7 @@ test("scenario files are valid JSONL", () => {
 
 test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are reported", async () => {
   const ev = await run("brief-auth");
-  const errors = ev.flatMap((e) => (e.type === "tool.completed" && e.error ? [e.error] : []));
+  const errors = ev.flatMap((e) => (e.type === "tool.completed" && e.error && !e.error.startsWith("Denied by") ? [e.error] : []));
   assert.ok(errors.some((e) => /EULA/.test(e)) && errors.some((e) => /VS30063/.test(e)));
   const blocked = ev.flatMap((e) => (e.type === "message" && e.text.startsWith("Bị chặn") ? [e.text] : []));
   assert.ok(blocked.some((t) => t.includes("github-mcp-server-get_me")), "built-in GitHub tool blocked");
@@ -117,8 +115,12 @@ test("summarize: retried model errors are not failures; blocking errors drop the
   assert.match(auth.failures["comms-reader"], /^Tool lỗi: .*EULA/);
   assert.ok(!auth.items.some((i) => /EULA/.test(i.title)), "EULA item only restated the tool error");
   assert.equal(auth.items.length, 1);
-  assert.equal(auth.blocked?.length, 3);
+  assert.equal(auth.blocked?.length, 4);
   assert.ok(auth.blocked!.some((b) => b.includes("github-list_workflow_runs")), "a guessed tool name is blocked");
+  assert.deepEqual(auth.warnings, [], "denied calls are under Đã chặn only, not warnings too");
+  const denied = (await run("brief-auth")).flatMap((e) => (e.type === "tool.completed" && e.error?.startsWith("Denied by preToolUse hook: ") ? [e.error] : []));
+  assert.equal(denied.length, 4, "mock reports a denied call like the real runtime");
+  assert.ok(denied.some((e) => e.includes("github-list ") && e.includes("github-actions_list")), "the model is told which tools it may call");
   assert.equal(auth.usedAiCredits, 4.2);
 });
 
@@ -129,7 +131,7 @@ test("report hints: config and model mistakes", () => {
     ["Request rejected due to unknown arguments: resource-group", "cloud-reader"],
     ['{"status":400} ErrorCode: BadArgumentError', "KQL"],
     ["Expecting constant value. The error is caused by «SELECT».", "@Follows"],
-    ['{"status":403} InsufficientAccessError', "az login"],
+    ['{"status":403} InsufficientAccessError', "az account get-access-token"],
     ["Could not find workspace 'w2'", "az login"],
     ["ErrorCode: BadArgumentError Inner: SyntaxError SYN0002 Query could not be parsed at 'last'", "lastSeen"],
     [`MCP server 'azure': {"status":401,"message":"Azure credentials not found or unavailable."}`, "az account get-access-token"],

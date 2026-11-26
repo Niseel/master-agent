@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AgentResult } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
-import { audit, decide } from "../security.ts";
+import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
 import { ApprovalBox, type AgentRuntime, type RunInput } from "./index.ts";
 
 /** One line of fixtures/scenarios/*.jsonl */
@@ -50,7 +50,8 @@ export class MockRuntime implements AgentRuntime {
         callAgent.set(ev.callId, agent.name);
         yield ev;
         if (decision === "deny") {
-          yield { type: "tool.completed", callId: ev.callId, ok: false };
+          // Same error the real runtime reports for a denied call.
+          yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + denyHint(agent) };
           yield { type: "message", agent: agent.name, text: `Bị chặn: ${reason}` };
           callAgent.delete(ev.callId); // the scenario's own completion for this call is skipped
         }

@@ -5,7 +5,7 @@ import test from "node:test";
 import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
 import { loadConfig, normalizeRepo } from "../src/config.ts";
 import { mcpAuth, sessionTools, waitForMcp } from "../src/runtime/sdk.ts";
-import { audit, decide, looksLikeWrite, redact } from "../src/security.ts";
+import { audit, decide, denyHint, looksLikeWrite, redact } from "../src/security.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
@@ -163,4 +163,13 @@ test("code-reader task names workflow runs via actions_list, a tool it may call"
   assert.match(a.task, /`actions_list` với `method: "list_workflow_runs"`/);
   assert.ok((a.readTools as string[]).includes("github-actions_list"));
   assert.ok(!(a.readTools as string[]).includes("github-list_workflow_runs"));
+});
+
+test("denyHint: a denied reader learns its allowed tools; writers and '*' get nothing extra", async () => {
+  const code = readerAgents(await loadConfig(root)).find((x) => x.name === "code-reader")!;
+  assert.match(denyHint(code), /^ Chỉ dùng các tool: github-get_me, .*github-actions_list/);
+  assert.equal(denyHint(reader), "", "readTools '*' has no list");
+  assert.equal(denyHint({ ...code, kind: "writer" }), "");
+  // The audit/report reason stays short; only the model gets the list.
+  assert.ok(!decide(code, "github-list").reason.includes("Chỉ dùng"));
 });

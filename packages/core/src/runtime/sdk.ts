@@ -14,7 +14,7 @@ import type { AgentSpec } from "../agents.ts";
 import { AgentResult } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
-import { audit, decide } from "../security.ts";
+import { audit, decide, denyHint } from "../security.ts";
 import { ApprovalBox, EventQueue, type AgentRuntime, type RunInput } from "./index.ts";
 
 type PreToolUseHookOutput = Exclude<Awaited<ReturnType<NonNullable<SessionHooks["onPreToolUse"]>>>, void>;
@@ -174,7 +174,8 @@ export class SdkRuntime implements AgentRuntime {
     const { decision, reason } = decide(a, tool);
     audit(this.cfg.root, { agent: a.name, tool, args, decision, reason });
     if (decision === "deny") q.push({ type: "message", agent: a.name, text: `Bị chặn: ${reason}` });
-    if (decision !== "ask") return { permissionDecision: decision, permissionDecisionReason: reason };
+    if (decision === "allow") return { permissionDecision: decision, permissionDecisionReason: reason };
+    if (decision === "deny") return { permissionDecision: decision, permissionDecisionReason: reason + denyHint(a) };
 
     const id = callId ?? randomUUID();
     const wait = this.approvals.wait(id);

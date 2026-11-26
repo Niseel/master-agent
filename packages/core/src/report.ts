@@ -3,6 +3,7 @@ import path from "node:path";
 import type { BriefItem } from "./brief.ts";
 import type { HubConfig } from "./config.ts";
 import type { HubEvent } from "./events.ts";
+import { DENIED_PREFIX } from "./security.ts";
 
 export interface BriefReport {
   date: string; // YYYY-MM-DD
@@ -59,7 +60,7 @@ const HINTS: { re: RegExp; kind: HintKind; text: string }[] = [
     re: /InsufficientAccessError|Could not find workspace/,
     kind: "warning",
     text:
-      "Không đọc được 1 workspace. Azure MCP dùng tài khoản `az login` (AzureCliCredential): kiểm tra `az account show`, " +
+      "Không đọc được 1 workspace. Azure MCP dùng tài khoản `az login` (AzureCliCredential): kiểm tra `az account get-access-token`, " +
       "tên workspace / subscription trong .env và quyền đọc (ví dụ Log Analytics Reader), hoặc bỏ workspace khỏi AZURE_LOG_WORKSPACE.",
   },
   {
@@ -92,7 +93,8 @@ export function summarize(events: HubEvent[]): Pick<BriefReport, "items" | "fail
     if (ev.type === "tool.started") callAgent.set(ev.callId, ev.agent);
     else if (ev.type === "tool.completed") {
       const agent = callAgent.get(ev.callId);
-      if (!agent || !ev.error) continue;
+      // A denied call is already listed under "Đã chặn" (message "Bị chặn: ..."); not a warning too.
+      if (!agent || !ev.error || ev.error.startsWith(DENIED_PREFIX)) continue;
       const kind = findHint(ev.error)?.kind;
       if (kind === "blocking") failures[agent] ??= `Tool lỗi: ${ev.error}`;
       else if (kind === "warning") warnings.push(`${agent}: ${ev.error}`);

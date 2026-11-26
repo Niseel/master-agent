@@ -40,6 +40,17 @@ export function decide(agent: AgentSpec, tool: string): { decision: Decision; re
     : { decision: "allow", reason: "Tool đọc (heuristic, chưa có allowlist)" };
 }
 
+/** Prefix the Copilot runtime puts on a tool error when onPreToolUse denies the call (found at Work 2026-11-26). */
+export const DENIED_PREFIX = "Denied by preToolUse hook: ";
+
+/**
+ * Extra text for the model when a call is denied: the tools it may call. The model sees this reason and fixes a
+ * guessed tool name on its next try (found at Work: `github-list`, `github-list_workflow_runs_placeholder`).
+ * Kept out of the audit/report reason so those stay short.
+ */
+export const denyHint = (agent: AgentSpec) =>
+  agent.kind === "reader" && agent.readTools !== "*" ? ` Chỉ dùng các tool: ${agent.readTools.join(", ")}.` : "";
+
 const SECRET_KEY = /token|secret|password|passwd|api[-_]?key|authorization|cookie|credential/i;
 
 /** Deep-copy `value`, replacing secret-looking fields with "***". */
