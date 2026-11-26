@@ -1,4 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { BriefItem } from "./brief.ts";
+import type { HubConfig } from "./config.ts";
 import type { HubEvent } from "./events.ts";
 
 export interface BriefReport {
@@ -149,4 +152,14 @@ ${r.blocked?.length ? `<h2>Đã chặn</h2><ul>${r.blocked.map((b) => `<li class
 <footer>Runtime: ${esc(r.runtime)} · AI Credits: ${r.usedAiCredits.toFixed(2)} / ${r.maxAiCredits} · ${(r.durationMs / 1000).toFixed(1)}s</footer>
 </main></body></html>
 `;
+}
+
+/** Build the report from a run's events and write <AGENTHUB_REPORT_DIR or root/reports>/brief-YYYY-MM-DD.html. */
+export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredits">, events: HubEvent[], durationMs: number) {
+  const date = new Date().toISOString().slice(0, 10);
+  const report: BriefReport = { date, runtime: cfg.runtime, ...summarize(events), maxAiCredits: cfg.maxAiCredits, durationMs };
+  const file = path.join(process.env.AGENTHUB_REPORT_DIR || path.join(cfg.root, "reports"), `brief-${date}.html`);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, renderReport(report));
+  return { report, file };
 }

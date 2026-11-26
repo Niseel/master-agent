@@ -9,3 +9,4 @@
 - Khi có `docs/work-feedback.md` mới: cập nhật `packages/mock-mcp` + `fixtures/` cho khớp thật trước, rồi mới sửa code.
 - Phần chỉ kiểm chứng được ở Work: đánh dấu `[Work]` trong checklist PLAN.md và ghi cách kiểm tra vào `docs/WORK.md`.
 - Fixture là dữ liệu tự tạo. Không bao giờ dùng dữ liệu công ty.
+- Từ 2026-11-26 Claude Code viết toàn bộ code. Work (Copilot) chỉ chạy và kiểm chứng: `docs/handoff-copilot.md` chỉ ghi lệnh cần chạy và điều cần ghi lại, không giao việc sửa code.

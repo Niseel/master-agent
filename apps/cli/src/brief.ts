@@ -3,12 +3,10 @@
  * Runs the 4 reader agents in parallel, writes reports/brief-YYYY-MM-DD.html.
  * Read-only: any approval request is rejected automatically.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { readerAgents } from "@agenthub/core/agents";
 import { loadConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
-import { renderReport, summarize } from "@agenthub/core/report";
+import { saveReport } from "@agenthub/core/report";
 import { createRuntime } from "@agenthub/core/runtime/index";
 
 try {
@@ -57,20 +55,5 @@ for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || 
 await runtime.stop();
 
 // Items from an agent that later failed (e.g. schema error) are already excluded by the runtime.
-const { items, failures, warnings, blocked, usedAiCredits } = summarize(events);
-const date = new Date().toISOString().slice(0, 10);
-const html = renderReport({
-  date,
-  runtime: cfg.runtime,
-  items,
-  failures,
-  warnings,
-  blocked,
-  usedAiCredits,
-  maxAiCredits: cfg.maxAiCredits,
-  durationMs: Date.now() - t0,
-});
-const out = path.join(cfg.root, "reports", `brief-${date}.html`);
-mkdirSync(path.dirname(out), { recursive: true });
-writeFileSync(out, html);
-console.log(`\n${items.length} mục, ${Object.keys(failures).length} lỗi, ${warnings?.length ?? 0} cảnh báo → ${out}`);
+const { report, file } = saveReport(cfg, events, Date.now() - t0);
+console.log(`\n${report.items.length} mục, ${Object.keys(report.failures).length} lỗi, ${report.warnings?.length ?? 0} cảnh báo → ${file}`);

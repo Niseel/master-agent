@@ -199,3 +199,56 @@ Mẫu mỗi mục:
   `InsufficientAccessError` / `Could not find workspace` (kiểm tra tài khoản `az login` và quyền Reader).
 - Mock đang giả định: mọi workspace đều đọc được; server mock không quan tâm `env`.
 - Đề xuất: mock trả 403/404 cho 1 workspace fixture (như lần 3/4) để test gợi ý mới end-to-end.
+
+## 2026-11-25 (lần 5) — azure (cloud-reader), sau thay đổi Home lần 3
+- Thấy: 4/4 agent ok, 5 mục, 0 cảnh báo, 49.5s (tổng lệnh 51.7s), 40.06/120 AI Credits. cloud-reader 48.0s.
+- Thấy: 12 lần gọi, tất cả `allow`, không lỗi tool: `group_list` ×1, `group_resource_list` ×2, `monitor` ×9
+  (`monitor_workspace_list` ×1, `monitor_table_list` ×2, `monitor_workspace_log_query` ×4,
+  `monitor_activitylog_list` ×2).
+- Thấy: **workspace thứ hai đọc được qua agent**: `monitor_table_list` ×1 + `monitor_workspace_log_query` ×1, không
+  lỗi (lần 4: 404, lần 3: 403). Workspace đầu: `monitor_table_list` ×1 + `monitor_workspace_log_query` ×3. Sửa
+  `AzureCliCredential` có tác dụng.
+- Thấy: báo cáo có 3 item Azure, không có mục "Cảnh báo" (không còn lỗi 403/404). Đường "Cảnh báo" của Home chỉ
+  kiểm được bằng mock.
+- Mock đang giả định: `law-payments` trả 403, `law-archive` trả 404.
+- Đề xuất: giữ hai workspace lỗi trong mock (lỗi thật vẫn có thể gặp khi thiếu quyền hoặc credential đổi). Không sửa gì.
+
+## 2026-11-25 (lần 5) — comms-reader + built-in `github-mcp-server`
+- Thấy: comms-reader 31.2s, 5 lần gọi: `workiq-fetch` ×3 `{entityUrls}`, `workiq-retrieve` ×1 `{query, capabilities}`
+  (`capabilities` là mảng `{name}`, giá trị đã gặp: `"TeamsMessages"`), và tool built-in
+  `github-mcp-server-get_file_contents` ×1 `{owner, repo}` → `deny` (không thuộc MCP server của comms-reader).
+  Báo cáo hiện ở mục "Đã chặn"; agent vẫn ok. Lần 2, cloud-reader cũng gọi built-in ×2.
+- Thấy: `sdk.ts` đặt `availableTools: ["mcp:*"]`. Server built-in `github-mcp-server` là MCP server
+  (`configSource: "builtin"`), nên `mcp:*` vẫn khớp: model thấy 6 tool built-in trong mọi session. `decide()` chặn
+  đúng, nhưng tốn một lượt model.
+- Thấy (SDK 1.0.34, `toolSet.d.ts`): `ToolSet.addMcp(toolName)` nhận tên wire của tool MCP (ví dụ
+  `"github-list_issues"`) hoặc `"*"`. Dạng chuỗi tương ứng trong `availableTools` là `mcp:<tên>`. `excludedTools` cùng
+  cú pháp và luôn thắng. Không có mẫu theo tên server (dạng `mcp:<server>-*` không được tài liệu hoá).
+- Mock đang giả định: workiq `retrieve` chỉ có `{query}`.
+- Đề xuất:
+  - `sdk.ts`: khi `readTools` là danh sách, đặt ``availableTools: a.readTools.map((t) => `mcp:${t}`)`` thay cho
+    `["mcp:*"]`. Model chỉ thấy tool trong allowlist. Giữ `decide()` làm lớp thứ hai. Đây là thu hẹp quyền.
+    Kiểm ở Home bằng `byok` + mock MCP; Work kiểm audit brief thật không còn `github-mcp-server-*`.
+  - Tuỳ chọn (nếu cách trên không được): task comms-reader thêm "chỉ dùng Work IQ, không đọc repo/code GitHub".
+  - Mock workiq `retrieve`: thêm `capabilities?: {name: string}[]`.
+
+## 2026-11-25 (lần 5) — ado (board-reader), code-reader
+- Thấy: board-reader 21.8s, 7 lần gọi, tất cả `allow`: `wit_query` ×2 `{action:"wiql", project, wiql}` (`@Me`,
+  `@Follows`, không subquery), `wit_work_item` `get_batch` ×1 `{action, ids, fields}` (không có `project`),
+  `list_comments` ×2 `{action, project, workItemId, top}`, `list_revisions` ×2 `{action, project, workItemId, top}`
+  (lần này không có `skip`).
+- Thấy: code-reader 21.2s, 7 lần gọi: `get_me` ×1, `search_pull_requests` ×2, `pull_request_read` ×2,
+  `actions_list` ×2. Tham số khớp mục "github" ở trên.
+- Mock đang giả định: khớp (`project`, `skip` đều tuỳ chọn).
+- Đề xuất: không sửa gì.
+
+## 2026-11-25 (lần 5) — công cụ ở Work
+- Thấy: xoay vòng `GITHUB_MCP_TOKEN` (token `gho_` của `gh`): thu hồi đúng token cũ qua `POST /credentials/revoke`
+  (202), rồi `gh auth login --web`. Không dùng "Revoke access" của OAuth app GitHub CLI (đăng xuất `gh` ở mọi máy).
+- Thấy: kiểm GitHub MCP không tốn credit: gửi `initialize` + `tools/list` thẳng tới endpoint, cùng header với
+  `agents.ts` → 32 tool, đủ `GITHUB_READ`. `Invoke-WebRequest` treo với phản hồi SSE; dùng `HttpClient` với
+  `ResponseHeadersRead` và đọc dòng `data:` đầu tiên.
+- Thấy: `pnpm list-tools` ghi đè `docs/mcp-tools.md` và bật mọi MCP server, không hợp để chỉ kiểm một token.
+- Thấy: `pnpm brief *> file` trong PowerShell giải mã UTF-8 theo code page của console, tiếng Việt bị lỗi. Đặt
+  `[Console]::OutputEncoding = [Text.Encoding]::UTF8` trước.
+- Đề xuất: thêm hai ghi chú cuối vào `docs/WORK.md`.

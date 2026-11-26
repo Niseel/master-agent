@@ -10,10 +10,13 @@
     "brief": "tsx apps/cli/src/brief.ts",
     "smoke": "tsx scripts/sdk-smoke.ts",
     "list-tools": "tsx scripts/list-tools.ts",
-    "test": "node --import tsx --import ./scripts/test-setup.ts --test \"packages/*/test/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "test": "node --import tsx --import ./scripts/test-setup.ts --test \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "playwright-smoke": "tsx scripts/playwright-smoke.ts",
+    "hub": "tsx apps/server/src/main.ts"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^22.10.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"

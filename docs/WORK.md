@@ -62,9 +62,14 @@ Ghi chú theo từng server:
 
 - **Work IQ** bị chặn (consent/license) → bỏ qua, MVP vẫn chạy 3 nguồn còn lại. Không thay bằng MCP
   bên thứ ba truy cập M365 khi chưa hỏi IT.
-- **Azure MCP**: cờ `--namespace monitor --read-only` lấy theo docs cũ. Nếu `@azure/mcp` báo cờ
-  không hợp lệ, xem `npx -y @azure/mcp@latest server start --help` và sửa `args` trong
-  `packages/core/src/agents.ts` (agent `cloud-reader`).
+- **Azure MCP**: ghim `@azure/mcp@4.0.0-beta.10` (`AZURE_MCP_VERSION` trong `packages/core/src/agents.ts`),
+  chạy với `--namespace monitor --read-only`. Gate chỉ thấy tên `azure-monitor`, không thấy lệnh con, nên
+  `--read-only` là lớp chặn ghi duy nhất cho lệnh con. Nâng bản:
+  1. `npx -y @azure/mcp@<bản mới> server start --help`: còn `--namespace` và `--read-only`.
+  2. Đổi `AZURE_MCP_VERSION`, chạy `pnpm list-tools`.
+  3. So lệnh `monitor_*` trong `docs/mcp-tools.md` với task `cloud-reader` trong `agents.ts`; khác thì sửa task
+     và mock (`packages/mock-mcp`).
+  4. `pnpm brief`, xem audit không có lỗi cờ / `unknown arguments`.
 - **ADO**: URL `https://mcp.dev.azure.com/<org>` + header `X-MCP-Readonly: true`. Auth do
   `mcpAuth` (trong `packages/core/src/runtime/sdk.ts`) lấy token từ `az`, nên cần `az login` bằng tài
   khoản **là thành viên org ADO**. Lỗi `VS30063` = identity của `az` không thuộc org.
@@ -120,6 +125,18 @@ Ngân sách: runtime bắt buộc `maxAiCredits >= 30` mỗi session, nên 4 age
 (mặc định). Đây là trần mềm, không phải số tiêu thực tế. Kiểm tra số credit ở footer báo cáo với trang billing GitHub: code đang giả định
 `1 AI Credit = 1e9 nano-AIU` (event `session.usage_checkpoint`). Sai thì ghi vào work-feedback.md.
 
+## 5b. Playwright MCP (smoke, không tốn AI Credits)
+
+```powershell
+npx -y @playwright/mcp@0.0.86 install-browser ffmpeg   # 1 lần: FFmpeg để quay video
+pnpm playwright-smoke                                    # Chrome hệ thống
+$env:PLAYWRIGHT_BROWSER = "msedge"; pnpm playwright-smoke # nếu máy không có Chrome
+```
+
+Script mở một trang mẫu (dữ liệu tự tạo) qua `127.0.0.1`, chụp ảnh, quay video, lưu trace vào
+`reports/playwright-smoke/`. Kết quả mong đợi: dòng cuối `Smoke Playwright: ok`, có `smoke.png`, `smoke.webm`,
+`traces/`. Lỗi tải browser/FFmpeg (proxy công ty): ghi thông báo lỗi vào `docs/work-feedback.md`.
+
 ## 6. Gửi phản hồi về Home
 
 Ghi mọi khác biệt so với mock vào `docs/work-feedback.md` (dạng cấu trúc), cập nhật
@@ -127,4 +144,10 @@ Ghi mọi khác biệt so với mock vào `docs/work-feedback.md` (dạng cấu 
 này để sửa mock MCP, fixture và code cho khớp thật.
 
 Không commit: `.env`, `logs/`, `reports/` (đã có trong `.gitignore`).
+
+Ghi chú công cụ:
+- PowerShell: `pnpm brief *> file` giải mã output theo code page của console, tiếng Việt bị lỗi. Chạy
+  `[Console]::OutputEncoding = [Text.Encoding]::UTF8` trước.
+- `pnpm list-tools` bật **mọi** MCP server và **ghi đè** `docs/mcp-tools.md`. Chỉ cần xem tool một agent thấy:
+  `pnpm smoke <agent> --tools` (không gửi prompt, không tốn credit; exit 1 nếu có tool ngoài allowlist).
 `pnpm test` ghi audit vào thư mục tạm (`AGENTHUB_LOG_DIR`), nên `logs/` chỉ có bản ghi của lần chạy thật.

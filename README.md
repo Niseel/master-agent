@@ -18,7 +18,8 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Mock MCP (Work IQ, ADO, Azure Monitor) theo tên tool thật từ Bước 0 + fixture có prompt injection | ✅ |
 | `pnpm brief` + báo cáo HTML | ✅ `mock`; ✅ `byok` thật ở Home (login Copilot cá nhân, 3 agent, ~47s, model gắn nhãn mail chứa prompt injection, không gọi tool ghi) |
 | Bước 0 ở Work (auth, Work IQ, ADO, Azure, tên tool thật) | ⏳ [Work] — xem docs/WORK.md |
-| Dashboard realtime (Phase 2) | chưa làm |
+| Dashboard realtime (Phase 2) | ⏳ API `pnpm hub` (SSE + POST, `mock` ✅); UI `apps/web` chưa làm |
+| Playwright MCP smoke (`pnpm playwright-smoke`) | ⏳ ảnh + trace ✅ ở Home; video cần FFmpeg của Playwright |
 
 ## Chạy ở Home (không cần Copilot công ty)
 
@@ -29,6 +30,7 @@ corepack enable   # hoặc dùng "corepack pnpm" thay cho "pnpm"
 pnpm install
 pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end (audit vào thư mục tạm)
 pnpm brief        # runtime mock, phát lại fixtures/scenarios/brief-ok.jsonl
+pnpm hub          # API dashboard ở http://127.0.0.1:4317 (GET /api/state, SSE /api/events, POST /api/run)
 ```
 
 Kịch bản lỗi (auth, timeout, hết ngân sách, sai schema):
@@ -59,6 +61,7 @@ packages/core/src/
   runtime/         AgentRuntime, mock.ts, sdk.ts (byok + copilot)
 packages/mock-mcp/ MCP server giả (stdio): workiq, azure
 apps/cli/          pnpm brief
+apps/server/       pnpm hub (API dashboard, chỉ 127.0.0.1)
 scripts/           sdk-smoke.ts, list-tools.ts (Bước 0)
 fixtures/          dữ liệu tự tạo + kịch bản HubEvent (*.jsonl)
 docs/              WORK.md, step0-results.md, mcp-tools.md, work-feedback.md

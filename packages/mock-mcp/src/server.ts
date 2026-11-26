@@ -33,7 +33,12 @@ if (kind === "workiq") {
   const all = () => Object.entries(entities).map(([p, e]) => ({ path: p, ...(e as object) }));
   server.registerTool(
     "retrieve",
-    { description: "Search the user's M365 work data (mail, Teams messages)", inputSchema: { query: z.string() }, annotations: readOnly },
+    // Real params (Work, 2026-11-25 run 5): `query`, optional `capabilities: {name}[]` (seen: "TeamsMessages"). Result unchanged.
+    {
+      description: "Search the user's M365 work data (mail, Teams messages)",
+      inputSchema: { query: z.string(), capabilities: z.array(z.object({ name: z.string() })).optional() },
+      annotations: readOnly,
+    },
     async () => json(all()),
   );
   server.registerTool(

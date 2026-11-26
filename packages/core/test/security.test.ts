@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
 import { loadConfig, normalizeRepo } from "../src/config.ts";
-import { mcpAuth, waitForMcp } from "../src/runtime/sdk.ts";
+import { mcpAuth, sessionTools, waitForMcp } from "../src/runtime/sdk.ts";
 import { audit, decide, looksLikeWrite, redact } from "../src/security.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -62,6 +62,7 @@ test("copilot allowlists: built-in and write/state tools are denied", async () =
   // azure-monitor sub-commands are only kept read-only by the server flag.
   const azure = agent("cloud-reader").mcpServers.azure as { args: string[]; env?: Record<string, string> };
   assert.ok(azure.args.includes("--read-only"));
+  assert.ok(azure.args.some((a) => /^@azure\/mcp@\d+\.\d+\.\d+/.test(a)), "@azure/mcp must be pinned, not @latest");
   // Azure MCP must use the `az login` identity, not whatever DefaultAzureCredential finds first.
   assert.equal(azure.env?.AZURE_TOKEN_CREDENTIALS, "AzureCliCredential");
 });
@@ -143,4 +144,16 @@ test("audit goes to AGENTHUB_LOG_DIR (temp dir under pnpm test), never logs/", (
   audit(root, { agent: "test", tool: "x-y", args: { token: "s" }, decision: "deny" });
   const file = path.join(dir, `audit-${new Date().toISOString().slice(0, 10)}.jsonl`);
   assert.match(readFileSync(file, "utf8"), /"token":"\*\*\*"/);
+});
+
+test("sessionTools: the model sees only allowlisted MCP tools, never the built-in github-mcp-server-*", async () => {
+  assert.deepEqual(sessionTools({ readTools: "*" }), ["mcp:*"]);
+  for (const a of readerAgents(await loadConfig())) {
+    assert.ok(Array.isArray(a.readTools), `${a.name} must keep an explicit allowlist`);
+    const tools = sessionTools(a);
+    assert.deepEqual(tools, (a.readTools as string[]).map((t) => `mcp:${t}`));
+    assert.ok(!tools.some((t) => t === "mcp:*" || t.startsWith("mcp:github-mcp-server")), a.name);
+    // ToolSet.addMcp() accepts only these characters.
+    for (const t of tools) assert.match(t, /^mcp:[a-zA-Z0-9_-]+$/);
+  }
 });

@@ -82,6 +82,7 @@ test("mock errors match real servers", async () => {
 
     const [err, text] = await call(workiq, "fetch", { entityUrls: ["/me/messages/m1"] });
     assert.ok(!err && text.includes("[Prod]"));
+    assert.equal((await call(workiq, "retrieve", { query: "x", capabilities: [{ name: "TeamsMessages" }] }))[0], false);
   } finally {
     await Promise.all([ado.close(), azure.close(), workiq.close()]);
   }

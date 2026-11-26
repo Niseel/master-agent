@@ -3,6 +3,14 @@
 Đọc [PLAN.md](PLAN.md) trước khi làm. Hướng dẫn chạy ở Work: [docs/WORK.md](docs/WORK.md).
 **Việc đang dở từ Home: [docs/handoff-copilot.md](docs/handoff-copilot.md) — đọc trước tiên.**
 
+**Vai trò (từ 2026-11-26): Work chỉ chạy app và kiểm chứng. Claude Code ở Home viết toàn bộ code.**
+- Không sửa code: `apps/`, `packages/`, `scripts/`, `fixtures/`, `package.json`, `pnpm-lock.yaml`, `agenthub.config.ts`.
+- Được làm: chạy lệnh trong handoff (`pnpm install/test/typecheck/brief/smoke/list-tools/playwright-smoke`),
+  đọc `logs/audit-*.jsonl` và báo cáo, sửa `.env` (không commit).
+- Chỉ ghi vào: `docs/step0-results.md`, `docs/work-feedback.md`, `docs/handoff-claude.md`, `docs/mcp-tools.md`
+  (do `pnpm list-tools` sinh), checklist `[Work]` trong `PLAN.md`. Cần sửa code thì ghi đề xuất vào
+  `docs/work-feedback.md` (file, lý do, lỗi/mã lỗi thật dạng cấu trúc). Home sửa.
+
 - TypeScript strict, ESM, Node 22, pnpm. Chạy `pnpm test` và `pnpm typecheck` trước khi commit.
 - API SDK: đối chiếu `node_modules/@github/copilot-sdk/dist/types.d.ts`, không đoán.
 - Không thêm tool ghi vào agent đọc (`kind: "reader"` trong `packages/core/src/agents.ts`).

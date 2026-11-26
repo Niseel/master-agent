@@ -77,10 +77,10 @@ Người dùng gõ "check việc" → hệ thống chạy song song các agent c
 
 | | **Home** (cá nhân) | **Work** (công ty) |
 |---|---|---|
-| Ai code | Claude Code | GitHub Copilot agent mode trong VS Code (model Anthropic), đọc `AGENTS.md` → `PLAN.md` |
+| Ai code | Claude Code: **toàn bộ** code, test, docs (từ 2026-11-26) | Không code. GitHub Copilot agent mode (VS Code) chỉ chạy app với dịch vụ thật, kiểm chứng và ghi kết quả, đọc `AGENTS.md` → `docs/handoff-copilot.md` |
 | Model | Mock, hoặc Copilot SDK chế độ **BYOK** với API key cá nhân (`provider.type: "anthropic"`), hoặc Copilot Free của tài khoản GitHub cá nhân | License Copilot công ty |
 | Dữ liệu | Fixture tổng hợp (giả), GitHub cá nhân, org Azure DevOps miễn phí cá nhân | Dữ liệu thật |
-| Làm gì | Toàn bộ phần không phụ thuộc dịch vụ thật: UI, event mapper, approval gate, report, cấu hình agent, test | Bước 0, nối MCP thật, chỉnh allowlist, chạy thật |
+| Làm gì | Mọi feature và sửa lỗi, kể cả phần tích hợp (allowlist, task agent, gợi ý lỗi), dựa trên `docs/work-feedback.md` | Chạy `pnpm brief`/smoke/list-tools với dịch vụ thật, đọc audit, ghi khác biệt dạng cấu trúc vào `docs/work-feedback.md`, `docs/step0-results.md` |
 
 ### Runtime abstraction (bắt buộc từ ngày đầu)
 Mọi code gọi agent đi qua interface `AgentRuntime` trong `packages/core/runtime/`:
@@ -109,9 +109,9 @@ Nhờ `byok`, gần như toàn bộ code SDK (customAgents, hooks, events, sessi
 - Code chuyển giữa hai môi trường qua git (repo cá nhân hoặc theo quy định công ty — người dùng tự xác nhận được phép).
 
 ### Vòng lặp làm việc
-1. Home: Claude Code làm feature với `mock`/`byok`, test xanh, push.
-2. Work: pull, chạy `AGENTHUB_RUNTIME=copilot`, Copilot agent mode sửa phần tích hợp nếu cần.
-3. Work: ghi lại khác biệt/lỗi **dạng cấu trúc** vào `docs/work-feedback.md` (không có dữ liệu thật), push.
+1. Home: Claude Code làm feature với `mock`/`byok`, test xanh, viết `docs/handoff-copilot.md` (lệnh cần chạy, điều cần kiểm), push.
+2. Work: pull, chạy `AGENTHUB_RUNTIME=copilot` theo handoff. Copilot **không sửa code** (`apps/`, `packages/`, `scripts/`, `fixtures/`, `package.json`); chỉ chạy, đọc kết quả.
+3. Work: ghi lại khác biệt/lỗi **dạng cấu trúc** vào `docs/work-feedback.md`, `docs/step0-results.md` (không có dữ liệu thật), viết `docs/handoff-claude.md`, push.
 4. Home: Claude Code đọc `docs/work-feedback.md`, cập nhật mock/fixture cho khớp thật, sửa code.
 
 ## 4. Thông tin kỹ thuật đã xác minh
@@ -159,7 +159,7 @@ Nhờ `byok`, gần như toàn bộ code SDK (customAgents, hooks, events, sessi
 | Azure DevOps | **ADO Remote MCP** (GA 8/2026) | `{ type: "http", url: "https://mcp.dev.azure.com/<org>" }` | Entra auth. Hỗ trợ Copilot CLI. Header `X-MCP-Readonly` để giới hạn chỉ-đọc; có toolsets để giới hạn tool. |
 | GitHub | **GitHub MCP** | `{ type: "http", url: "https://api.githubcopilot.com/mcp/" }` | Auth GitHub. |
 | Azure | **Azure MCP Server** (namespace `monitor`) | theo docs Azure MCP | Query KQL Log Analytics, metrics, activity log, health. Dùng `az login`. |
-| Nghiệm thu | **Playwright MCP** | `npx @playwright/mcp@latest --caps=devtools` | `browser_start_video` / `browser_stop_video` (WebM, chapter card, action callout); `--save-trace`, `--save-session`; screenshot. |
+| Nghiệm thu | **Playwright MCP** | `npx -y @playwright/mcp@0.0.86 --headless --isolated --caps=devtools --output-dir <dir>` (kiểm ở Home 2026-11-26, `scripts/playwright-smoke.ts`) | Video: `browser_start_video {filename?}` / `browser_stop_video`, `browser_video_chapter {title, description?, duration?}`, `browser_video_show_actions`; cần FFmpeg của Playwright (`npx -y @playwright/mcp@0.0.86 install-browser ffmpeg`). Trace: tool `browser_start_tracing` / `browser_stop_tracing` (không có cờ `--save-trace`). `--save-session`; `browser_take_screenshot {filename?, fullPage?}`. `file://` bị chặn mặc định: phục vụ trang qua `127.0.0.1`. |
 
 ### Policy công ty (GitHub)
 - Copilot SDK chạy trên Copilot CLI → org/enterprise phải **bật policy Copilot CLI**.
@@ -191,7 +191,7 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] ADO Remote MCP trong Copilot CLI: "liệt kê work item giao cho tôi thay đổi trong 24h". — 2026-11-23: connected (OAuth qua profile `az` riêng, `ADO_AZURE_CONFIG_DIR`), `core_list_projects` chạy được. 2026-11-25: `pnpm brief` (copilot) board-reader ok.
 - [x] GitHub MCP: "PR đang chờ tôi review". — 2026-11-23: connected, tool đọc chạy được.
 - [x] Azure MCP: "cảnh báo / lỗi trong Log Analytics workspace X trong 24h". — 2026-11-25: ok, 4 tool (`monitor` gộp 22 lệnh con, không có lệnh liệt kê alert); allowlist `AZURE_READ`.
-- [ ] Playwright MCP: quay thử video một trang bất kỳ.
+- [ ] Playwright MCP: quay thử video một trang bất kỳ. — [Home] 2026-11-26: `pnpm playwright-smoke` (trang mock qua `127.0.0.1`), ghim `@playwright/mcp@0.0.86`, tên tool/cờ thật ở bảng MCP servers; ảnh + trace ok, video chờ cài FFmpeg của Playwright. [Work] chạy lại cùng script (tải browser/FFmpeg qua proxy công ty).
 - [x] [Work] Liệt kê **tên tool thật** (chạy `pnpm list-tools`, xem docs/WORK.md) của từng MCP server (để làm allowlist) → `docs/mcp-tools.md`, phân loại đọc/ghi. — workiq, ado, github, azure xong.
 - [x] Script tối thiểu `scripts/sdk-smoke.ts`: tạo session bằng SDK, gọi 1 MCP, in event ra console.
 
@@ -228,16 +228,19 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] [Home] Theo work-feedback 2026-11-25 (lần 4): mock azure lỗi 404 `Could not find workspace with name ...`; mock ado `wit_work_item` `action:"list_comments"`; xem handoff-claude.md §3. — xong 2026-11-25 (Home): 403/404 workspace là "Cảnh báo", giữ item của workspace khác.
 - [x] [Work] `AZURE_SUBSCRIPTION`/`AZURE_LOG_WORKSPACE` nhận nhiều giá trị (dấu phẩy), ghép theo thứ tự; 1 subscription dùng cho mọi workspace. Config: `azure.subscriptions[]`, `azure.workspaces[]`.
 - [x] [Work] Nguyên nhân 403/404 ở workspace thứ hai: không phải subscription khác (cùng subscription, khác resource group). Azure MCP dùng DefaultAzureCredential, chọn danh tính khác `az login`. Sửa: server `azure` chạy với env `AZURE_TOKEN_CREDENTIALS=AzureCliCredential` (kiểm trực tiếp: thấy đủ workspace, query 200). `report.ts` có gợi ý cho 403/404 workspace.
-- [ ] [Work] Chạy lại `pnpm brief` runtime `copilot` (~39 AI Credits) để xác nhận workspace thứ hai đọc được qua agent.
-- [ ] [Work] Tuỳ chọn: ghim phiên bản `@azure/mcp` (đang `@latest` = 4.0.0-beta.10).
+- [x] [Work] Chạy lại `pnpm brief` runtime `copilot` (~39 AI Credits) để xác nhận workspace thứ hai đọc được qua agent. — 2026-11-25 lần 5: workspace thứ hai đọc được (`monitor_table_list` + `monitor_workspace_log_query`, không lỗi), 4/4 agent ok, 49.5s, 40.06/120 AI Credits, không có mục "Cảnh báo". Audit: 1 `deny` (comms-reader gọi built-in `github-mcp-server-*`), không tool ghi nào được `allow`.
+- [x] [Home] Theo work-feedback 2026-11-25 (lần 5): `availableTools` lấy từ `readTools` (`mcp:<tên tool>`) để model không thấy built-in `github-mcp-server-*`; mock workiq `retrieve` nhận `capabilities`; xem handoff-claude.md §3. — xong 2026-11-26: `sessionTools()` trong `sdk.ts`; kiểm `byok` + mock: model chỉ thấy tool trong allowlist (`pnpm smoke <agent> --tools`).
+- [x] [Home] Ghim `@azure/mcp@4.0.0-beta.10` (bản Work dùng lần 1–5, đang `@latest`); kiểm `--help` còn `--namespace`, `--read-only`; cập nhật docs/WORK.md. — xong 2026-11-26 (`AZURE_MCP_VERSION`).
+- [ ] [Work] Sau khi Home đổi `availableTools` + ghim `@azure/mcp`: chạy lại `pnpm brief` runtime `copilot`, audit không còn `github-mcp-server-*`, `cloud-reader` không lỗi cờ.
+- [ ] [Work] Tuỳ chọn: `pnpm smoke code-reader` với `GITHUB_MCP_TOKEN` rỗng, ghi trạng thái server + mã lỗi vào work-feedback.
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 
 **Tiêu chí xong:** chạy `pnpm brief` mỗi sáng ra báo cáo đúng, < 3 phút, nằm trong ngân sách credit đặt trước, không có tool ghi nào được gọi.
 
 ### Phase 2 — Dashboard realtime
-- [ ] `apps/server`: Node service local (Fastify hoặc Hono) giữ `CopilotClient`, mở WebSocket.
-- [ ] Chuẩn hoá event SDK thành event nội bộ:
+- [x] `apps/server`: Node service local giữ runtime, chỉ nghe `127.0.0.1`. — 2026-11-26: `node:http`, không thêm dependency; SSE (`GET /api/events`) thay WebSocket vì luồng chỉ chiều server → browser; lệnh qua `POST /api/run`, `/api/approvals/:id`, `/api/stop`. Chặn Host khác loopback (DNS rebinding), Origin khác, body không phải JSON (form cross-site). `pnpm hub`. Test `apps/server/test`.
+- [x] Chuẩn hoá event SDK thành event nội bộ (`packages/core/src/events.ts`, đã có từ Phase 1):
   ```ts
   type HubEvent =
     | { type: "agent.started"; agent: string; at: string }
@@ -321,6 +324,7 @@ agent-hub/
 - Mọi feature phải chạy được end-to-end với `mock` trước khi coi là xong ở Home.
 - Khi đọc `docs/work-feedback.md`: cập nhật mock MCP + fixture cho khớp thật trước, rồi mới sửa code.
 - Phần nào chỉ kiểm chứng được ở Work thì đánh dấu `[Work]` trong checklist và ghi rõ cách kiểm tra để người dùng làm.
+- Claude Code viết toàn bộ code. Việc `[Work]` chỉ là chạy và kiểm chứng; nếu cần sửa code, Work ghi đề xuất vào `docs/work-feedback.md`, Home sửa.
 
 ## 9. Câu hỏi mở (điền sau Bước 0)
 

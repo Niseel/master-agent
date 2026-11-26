@@ -71,6 +71,15 @@ export async function waitForMcp(s: Pick<CopilotSession, "rpc">, names: string[]
 }
 
 /**
+ * Tools the model may see. An explicit allowlist hides everything else, including the SDK's built-in
+ * `github-mcp-server-*` MCP tools (found at Work: `mcp:*` matched them, the model called them, the gate denied
+ * them, each try cost a model turn). `mcp:<name>` takes the runtime wire name `<server>-<tool>` (toolSet.d.ts).
+ * decide() stays the second layer.
+ */
+export const sessionTools = (a: Pick<AgentSpec, "readTools">) =>
+  a.readTools === "*" ? ["mcp:*"] : a.readTools.map((t) => `mcp:${t}`);
+
+/**
  * Real Copilot SDK runtime. Used for both:
  *  - "copilot": company Copilot license (logged-in `copilot` CLI user), real MCP servers.
  *  - "byok":    same code; model via ANTHROPIC_API_KEY if set (else personal Copilot login),
@@ -121,8 +130,8 @@ export class SdkRuntime implements AgentRuntime {
             : undefined,
         systemMessage: { mode: "append", content: a.prompt },
         mcpServers: a.mcpServers,
-        // No built-in shell/file/web tools: MCP tools only, and no built-in sub-agents.
-        availableTools: ["mcp:*"],
+        // No built-in shell/file/web tools: only the agent's allowlisted MCP tools, and no built-in sub-agents.
+        availableTools: sessionTools(a),
         includedBuiltinAgents: [],
         skipCustomInstructions: true,
         sessionLimits: { maxAiCredits: budget },

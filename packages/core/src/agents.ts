@@ -59,6 +59,8 @@ const GITHUB_READ = only("github", [
   "search_repositories", "list_branches",
 ]);
 // `monitor` dispatches sub-commands via `args.command`; only the server's `--read-only` flag keeps them read-only.
+/** Checked: `server start --help` has `--namespace`, `--read-only`. Used at Work for brief runs 1–5. */
+export const AZURE_MCP_VERSION = "4.0.0-beta.10";
 const AZURE_READ = only("azure", ["monitor", "subscription_list", "group_list", "group_resource_list"]);
 
 /**
@@ -186,10 +188,12 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
         // Found at Work 2026-11-25: Azure MCP's default credential chain signed in as another identity that
         // could not see one workspace (403/404, while `az` saw it). Pin it to the `az login` account.
         // `env` is merged with the inherited env (checked at Work).
+        // Version pinned: the gate only sees `azure-monitor`, so `--read-only` is the only write block for
+        // sub-commands, and a new beta may rename flags. Upgrade steps: docs/WORK.md "Azure MCP".
         azure: real
           ? {
               type: "stdio",
-              ...npx(["-y", "@azure/mcp@latest", "server", "start", "--namespace", "monitor", "--read-only"]),
+              ...npx(["-y", `@azure/mcp@${AZURE_MCP_VERSION}`, "server", "start", "--namespace", "monitor", "--read-only"]),
               env: { AZURE_TOKEN_CREDENTIALS: "AzureCliCredential" },
               tools: ["*"],
               timeout: 90_000,
