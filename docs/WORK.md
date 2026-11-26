@@ -20,7 +20,7 @@ node -v                 # cần ^20.19 hoặc >=22.12
 corepack enable         # nếu bị chặn quyền: dùng "corepack pnpm" thay cho "pnpm" ở mọi lệnh
 pnpm install
 pnpm test               # phải xanh (không gọi dịch vụ thật)
-pnpm brief              # runtime mock → mở reports/brief-<ngày>.html
+pnpm brief              # runtime mock → mở reports/brief-<ngày>-mock.html (runtime copilot: brief-<ngày>.html)
 copy .env.example .env  # rồi sửa .env
 ```
 
@@ -136,6 +136,20 @@ $env:PLAYWRIGHT_BROWSER = "msedge"; pnpm playwright-smoke # nếu máy không c�
 Script mở một trang mẫu (dữ liệu tự tạo) qua `127.0.0.1`, chụp ảnh, quay video, lưu trace vào
 `reports/playwright-smoke/`. Kết quả mong đợi: dòng cuối `Smoke Playwright: ok`, có `smoke.png`, `smoke.webm`,
 `traces/`. Lỗi tải browser/FFmpeg (proxy công ty): ghi thông báo lỗi vào `docs/work-feedback.md`.
+
+## 5c. Dashboard (Phase 2)
+
+```powershell
+$env:AGENTHUB_RUNTIME = "copilot"
+pnpm dashboard          # build apps/web rồi mở server; vào http://127.0.0.1:4317
+```
+
+- Bấm **Chạy** (hoặc Ctrl+Enter) với lệnh "check việc". Tốn AI Credits như `pnpm brief`, ghi cùng báo cáo
+  `reports/brief-<ngày>.html` và audit.
+- Tab **Đăng nhập** kiểm `gh auth status` và `az account get-access-token` (ADO dùng `ADO_AZURE_CONFIG_DIR`),
+  không tốn credit. Work IQ chỉ biết khi chạy.
+- Ctrl+C trong terminal để tắt. Nút **Dừng** dừng lượt chạy; yêu cầu duyệt đang chờ bị từ chối.
+- Không chụp màn hình dashboard vào repo (có dữ liệu thật). Chỉ ghi cấu trúc vào work-feedback.
 
 ## 6. Gửi phản hồi về Home
 

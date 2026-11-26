@@ -2,7 +2,7 @@
 
 Một nơi điều phối nhiều agent (Outlook/Teams, Azure DevOps, GitHub, Azure) chạy local bằng
 **GitHub Copilot SDK**. Mỗi sáng gõ `pnpm brief` → các agent chỉ-đọc chạy song song → báo cáo HTML
-`reports/brief-YYYY-MM-DD.html`.
+`reports/brief-YYYY-MM-DD.html` (mock/byok: `brief-YYYY-MM-DD-mock.html` / `-byok.html`, không ghi đè báo cáo thật).
 
 Bối cảnh, quyết định kiến trúc, lộ trình: [PLAN.md](PLAN.md).
 **Bắt đầu ở máy công ty: [docs/WORK.md](docs/WORK.md).**
@@ -17,9 +17,28 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Approval gate (`onPreToolUse` + `onPermissionRequest`), audit log JSONL | ✅ |
 | Mock MCP (Work IQ, ADO, Azure Monitor) theo tên tool thật từ Bước 0 + fixture có prompt injection | ✅ |
 | `pnpm brief` + báo cáo HTML | ✅ `mock`; ✅ `byok` thật ở Home (login Copilot cá nhân, 3 agent, ~47s, model gắn nhãn mail chứa prompt injection, không gọi tool ghi) |
-| Bước 0 ở Work (auth, Work IQ, ADO, Azure, tên tool thật) | ⏳ [Work] — xem docs/WORK.md |
-| Dashboard realtime (Phase 2) | ⏳ API `pnpm hub` (SSE + POST, `mock` ✅); UI `apps/web` chưa làm |
-| Playwright MCP smoke (`pnpm playwright-smoke`) | ⏳ ảnh + trace ✅ ở Home; video cần FFmpeg của Playwright |
+| Bước 0 ở Work (auth, Work IQ, ADO, Azure, tên tool thật) | ✅ |
+| Phase 1: `pnpm brief` runtime `copilot` ở Work | ✅ lần 8: 4/4 agent, 55s, 33/120 AI Credits, không tool ghi nào được gọi |
+| Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ⏳ [Work] kiểm với runtime `copilot` |
+| Playwright MCP smoke (`pnpm playwright-smoke`) | ✅ ở Work (video + ảnh + trace) |
+
+## Tính năng dùng được (MVP)
+
+| Tính năng | Lệnh / chỗ dùng |
+|---|---|
+| Check việc buổi sáng: 4 agent chỉ-đọc chạy song song (Outlook + Teams qua Work IQ, Azure DevOps, GitHub, Azure Monitor) | `pnpm brief` hoặc nút Chạy trên dashboard |
+| Báo cáo HTML: "Cần bạn xử lý" lên đầu, nhóm theo nguồn, màu theo độ ưu tiên, link trực tiếp, credit đã dùng | `reports/brief-<ngày>.html`, hoặc khung Báo cáo trên dashboard |
+| Báo lỗi có cách sửa: "Không lấy được" (đăng nhập, EULA, cấu hình, hết ngân sách), "Cảnh báo" (1 workspace không đọc được, lỗi lạ), "Đã chặn" (tool gate từ chối) | báo cáo + dashboard |
+| Dashboard realtime: sơ đồ orchestrator → agent → MCP server, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
+| Chi tiết từng agent / MCP server: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node |
+| Hàng duyệt: xem tham số đầy đủ, Duyệt / Từ chối kèm lý do | tab Duyệt (tự mở khi có yêu cầu) |
+| Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
+| Thanh credit đã dùng / ngân sách; nút Dừng (yêu cầu đang chờ bị từ chối, không bao giờ tự duyệt) | thanh trên |
+| An toàn: agent chỉ thấy tool trong allowlist, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
+| Chạy thử không cần dịch vụ thật: runtime `mock` với 3 kịch bản, `byok` với MCP giả | `AGENTHUB_RUNTIME`, `AGENTHUB_SCENARIO` |
+| Công cụ kiểm: tool model thấy (`pnpm smoke <agent> --tools`), danh sách tool thật (`pnpm list-tools`), Playwright smoke | không tốn credit |
+
+Chưa có (Phase 3+): agent có quyền ghi (soạn tin Teams, cập nhật work item, tạo PR), agent nghiệm thu bằng Playwright.
 
 ## Chạy ở Home (không cần Copilot công ty)
 
@@ -30,7 +49,8 @@ corepack enable   # hoặc dùng "corepack pnpm" thay cho "pnpm"
 pnpm install
 pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end (audit vào thư mục tạm)
 pnpm brief        # runtime mock, phát lại fixtures/scenarios/brief-ok.jsonl
-pnpm hub          # API dashboard ở http://127.0.0.1:4317 (GET /api/state, SSE /api/events, POST /api/run)
+pnpm dashboard    # build giao diện rồi mở http://127.0.0.1:4317 (runtime theo AGENTHUB_RUNTIME, mặc định mock)
+pnpm hub          # chỉ server (dùng bản build sẵn trong apps/web/dist)
 ```
 
 Kịch bản lỗi (auth, timeout, hết ngân sách, sai schema):
@@ -56,21 +76,24 @@ packages/core/src/
   security.ts      approval gate (decide), redact secret, audit log
   events.ts        HubEvent + mapSdkEvent (event SDK → event nội bộ)
   brief.ts         schema BriefItem (zod) — cũng là response schema gửi cho model
-  report.ts        render HTML
+  report.ts        summarize + render HTML
+  hints.ts         lỗi đã biết → cách sửa (dùng cả ở trình duyệt)
+  auth.ts          kiểm đăng nhập gh / az, không trả token
   config.ts        agenthub.config.ts + .env
   runtime/         AgentRuntime, mock.ts, sdk.ts (byok + copilot)
 packages/mock-mcp/ MCP server giả (stdio): workiq, azure
 apps/cli/          pnpm brief
-apps/server/       pnpm hub (API dashboard, chỉ 127.0.0.1)
-scripts/           sdk-smoke.ts, list-tools.ts (Bước 0)
+apps/server/       pnpm hub (API dashboard + phục vụ giao diện, chỉ 127.0.0.1)
+apps/web/          dashboard React + @xyflow/react (state.ts: event → trạng thái node, có test)
+scripts/           sdk-smoke.ts, list-tools.ts, playwright-smoke.ts (Bước 0)
 fixtures/          dữ liệu tự tạo + kịch bản HubEvent (*.jsonl)
 docs/              WORK.md, step0-results.md, mcp-tools.md, work-feedback.md
 ```
 
 ## Quy tắc bảo mật đã cài trong code
 
-- Agent đọc chỉ thấy MCP server của chính nó (1 session/agent), không có tool built-in
-  (`availableTools: ["mcp:*"]`, không shell/file).
+- Agent đọc chỉ thấy MCP server của chính nó (1 session/agent) và chỉ các tool trong allowlist
+  (`availableTools: mcp:<tên>`), không tool built-in, không shell/file.
 - Gate từ chối: tool của server khác, tool có tên giống ghi (`send`, `create`, `update`, `delete`, ...),
   tool ngoài allowlist khi đã có allowlist. Có 2 lớp: `onPreToolUse` và `onPermissionRequest`.
 - ADO và GitHub MCP luôn gửi header `X-MCP-Readonly: true`. Azure MCP chạy `--read-only`.
@@ -78,4 +101,6 @@ docs/              WORK.md, step0-results.md, mcp-tools.md, work-feedback.md
 - Mỗi agent có `sessionLimits.maxAiCredits` = ngân sách / số agent. Hết ngân sách → dừng agent, không tự tăng.
 - `pnpm brief` tự từ chối mọi approval request (brief là chỉ-đọc).
 - Audit mọi quyết định của gate vào `logs/audit-YYYY-MM-DD.jsonl` (đã lược secret).
+- Dashboard chỉ nghe `127.0.0.1`; từ chối Host lạ (DNS rebinding), Origin lạ, body không phải JSON (form cross-site);
+  CSP chặn trang khác nhúng dashboard (`frame-ancestors 'self'`); báo cáo hiển thị không được chạy script.
 - Báo cáo HTML escape toàn bộ nội dung, chỉ render link `http(s)`.

@@ -1,6 +1,6 @@
-# Bàn giao Home → Work (2026-11-26, lần 6)
+# Bàn giao Home → Work (2026-11-26, cho lần chạy Work 9)
 
-> Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md).
+> Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md) (mục 5c).
 > Bàn giao chiều ngược lại (Work → Home): [handoff-claude.md](handoff-claude.md).
 
 ## 0. Vai trò
@@ -13,42 +13,54 @@
 
 ## 1. Trạng thái
 
-- Home đã làm `handoff-claude.md` §3 (lần 7) mục 1–4. Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 34/34,
-  `pnpm brief` (mock): `brief-ok` 10 mục / 0 lỗi / 1 cảnh báo; `brief-failures` 4 lỗi;
-  `brief-auth` 1 mục / 3 lỗi / **0 cảnh báo**, 4 dòng "Đã chặn".
+- Phase 1 xong (lần 8 đạt tiêu chí). Phase 2 (dashboard) xong ở Home với `mock`, chờ Work kiểm với `copilot`.
+- Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 39/39, `pnpm brief` (mock) 3 kịch bản, dashboard trên trình duyệt
+  với `brief-ok` (duyệt / từ chối, báo cáo) và `brief-auth` (3 nguồn "Cần bạn xử lý", tab Đăng nhập).
 
 ## 2. Home đã đổi gì
 
 | Phần | Thay đổi | Kiểm ở Work |
 |---|---|---|
-| `report.ts` | Lỗi `Denied by preToolUse hook: …` không còn vào "Cảnh báo" (đã có ở "Đã chặn"). Gợi ý 403 dùng `az account get-access-token`. | §3 bước 2 |
-| `security.ts`, `runtime/sdk.ts` | Khi chặn, lý do gửi cho **model** kèm danh sách tool agent được dùng (`denyHint`). Quyết định allow/deny và `readTools` không đổi. Audit và báo cáo vẫn ghi lý do ngắn. | §3 bước 2 |
-| `apps/cli/src/brief.ts` | Console: không in `✗` cho lời gọi bị chặn; agent gặp lỗi chặn hoặc lỗi in `⚠ … không lấy được dữ liệu` thay cho `✓`. | §3 bước 2 |
-| mock | Lời gọi bị chặn sinh đúng chuỗi lỗi thật; `brief-auth` thêm tên đoán sai `github-list`. | Không cần |
+| `apps/web` (mới) | Dashboard React + `@xyflow/react`: sơ đồ orchestrator → agent → MCP server, panel Chi tiết / Duyệt / Đăng nhập, thanh credit, báo cáo. **Dependency mới:** react 19.3.1, react-dom 19.3.1, @xyflow/react 12.12.1, vite 8.3.8 (chỉ build, chạy local). | §3 bước 2–3 |
+| `apps/server` | Phục vụ giao diện, `GET /api/auth`, `GET /report`, CSP. Chỉ `127.0.0.1`. | §3 bước 2–3 |
+| `packages/core/src/auth.ts` (mới) | Kiểm `gh auth status`, `az account get-access-token --query expiresOn` (ADO với `ADO_AZURE_CONFIG_DIR`). Không trả token. | §3 bước 2 |
+| `report.ts` | Báo cáo mock/byok ghi `brief-<ngày>-mock.html` / `-byok.html`: thử mock ở Work không còn ghi đè báo cáo thật. | §3 bước 1 |
+| mock | Agent lỗi không phát thêm `agent.completed` (khớp `sdk.ts`). | Không cần |
+
+Không đổi quyền: `readTools`, `security.ts` (quyết định allow/deny), danh tính Azure, cờ `--read-only` giữ nguyên.
 
 ## 3. Việc ở Work (theo thứ tự)
 
-PowerShell: chạy `[Console]::OutputEncoding = [Text.Encoding]::UTF8` trước khi ghi output ra file.
-
-1. **Cài đặt:** `git pull`, `pnpm install`, `pnpm typecheck`, `pnpm test` (34 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
-   Nếu `pnpm brief` báo 401 Azure: kiểm `az account get-access-token` trước, đăng nhập lại nếu cần.
-2. **`pnpm brief` runtime `copilot` (lần 8, khoảng 27–40 AI Credits).** Ghi vào `docs/step0-results.md` mục 9:
-   - tổng thời gian, thời gian từng agent, AI Credits, số mục, số lỗi, số cảnh báo;
-   - mục "Cảnh báo": **không còn** dòng `Denied by preToolUse hook`;
-   - `code-reader`: số lần `deny` (lần 6: 1, lần 7: 2), tên tool bị chặn, sau đó có tự dùng `github-actions_list` không;
-     thời gian code-reader;
-   - console: không còn dòng `✗ … Denied by preToolUse hook`; agent nào in `⚠` thay cho `✓` (nếu có);
-   - audit `logs/audit-<ngày>.jsonl`: số bản ghi, `allow`/`deny`, không tool ghi nào `allow`.
-3. **Ghi và đẩy về:**
-   - `docs/step0-results.md`, `docs/work-feedback.md` (mục "lần 8"), dòng `[Work]` trong `PLAN.md`.
-   - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home.
+1. **Cài đặt:** `git pull`, `pnpm install` (có package mới: react, vite, @xyflow/react; ghi lại nếu proxy chặn),
+   `pnpm typecheck`, `pnpm test` (39 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
+   Tuỳ chọn: `pnpm brief` với `AGENTHUB_RUNTIME=mock` ghi `reports/brief-<ngày>-mock.html`, không đụng báo cáo thật.
+2. **Dashboard, chưa chạy (không tốn credit):**
+   ```powershell
+   $env:AGENTHUB_RUNTIME = "copilot"
+   pnpm dashboard
+   ```
+   Mở `http://127.0.0.1:4317`. Ghi lại:
+   - build có lỗi không; trang có hiện sơ đồ 4 agent + 4 MCP server không;
+   - tab **Đăng nhập**: trạng thái từng nguồn (github, ado, azure: "Đã đăng nhập" hay lỗi gì, chỉ ghi mã lỗi;
+     workiq: "Chưa rõ"). Không chép thời hạn token hay tên tài khoản.
+3. **Dashboard, chạy thật (lần 9, khoảng 27–40 AI Credits):** gõ "check việc", bấm **Chạy**. Ghi lại:
+   - 4 agent có chuyển "Đang chạy" cùng lúc không; edge có nhấp nháy khi gọi tool không; node nào kết thúc ở trạng
+     thái gì (Xong / Có cảnh báo / Cần bạn xử lý / Lỗi);
+   - bấm vào từng agent: danh sách tool đã gọi có khớp audit không (chỉ đếm, không chép tham số);
+   - khung **Báo cáo** có hiện sau khi xong không; số mục / lỗi / cảnh báo / credits / thời gian;
+   - thời gian, AI Credits so với `pnpm brief` lần 8 (55.0s, 33.11);
+   - audit `logs/audit-<ngày>.jsonl`: không tool ghi nào `allow`;
+   - console trình duyệt (F12) có lỗi đỏ không (chỉ ghi thông báo lỗi, đã xoá dữ liệu thật);
+   - tuỳ chọn: thu hẹp cửa sổ < 860px, giao diện có dùng được không.
+4. **Ghi và đẩy về:**
+   - `docs/step0-results.md` (thêm dòng "Dashboard runtime copilot"), `docs/work-feedback.md` (mục "lần 9"), dòng `[Work]`
+     Phase 2 trong `PLAN.md`.
+   - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home (góp ý giao diện ghi dạng cấu trúc).
    - `git status` chỉ có file trong `docs/` và `PLAN.md`. Commit, push.
-
-Tuỳ chọn: góp ý thiết kế dashboard ([design/dashboard.excalidraw](design/dashboard.excalidraw)) vào work-feedback.
 
 ## 4. Ràng buộc
 
 - Không có dữ liệu công ty trong repo: không tên org, project, tenant, tài khoản, workspace; không nội dung mail,
-  chat, work item, log, câu KQL/WIQL thật. Áp dụng cả cho commit message.
+  chat, work item, log, câu KQL/WIQL thật; **không chụp màn hình dashboard vào repo**. Áp dụng cả cho commit message.
 - Không sửa code (§0). Không dùng `approveAll`, không đổi `readTools`, `security.ts`, quyền, danh tính.
-- Không commit `.env`, `logs/`, `reports/`, token.
+- Không commit `.env`, `logs/`, `reports/`, `apps/web/dist/`, token.

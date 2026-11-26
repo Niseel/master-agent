@@ -236,11 +236,14 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] [Home] Theo work-feedback 2026-11-26 (lần 6): HINT chặn cho 401/`AADSTS50173`/`invalid_grant` + scenario mock 401; tuỳ chọn hiện lỗi tool không khớp HINT ở "Cảnh báo"; task code-reader nêu `actions_list` `method:"list_workflow_runs"`; xem handoff-claude.md §3. — xong 2026-11-26 (Home): cả 3 phần, `brief-auth` có 401 Azure + tên tool đoán sai.
 - [x] [Work] Sau khi người dùng `az logout` + `az login` (đúng `AZURE_CONFIG_DIR`): chạy lại `pnpm brief`, kiểm cloud-reader gọi chuỗi `monitor_*` không lỗi như lần 5. — 2026-11-26 lần 7: test 33/33, mock 3 kịch bản ok; 75.7s, 34.59/120 AI Credits, 8 mục, 0 lỗi; cloud-reader 12 lần gọi (`monitor_*` ×9), không lỗi, đọc cả 2 workspace. Audit 29 bản ghi (27 `allow`, 2 `deny`), không tool ghi nào `allow`. code-reader vẫn đoán tên tool 2 lần (`deny`), và 2 lần `deny` này hiện thêm ở "Cảnh báo" (work-feedback lần 7).
 - [x] [Home] Theo work-feedback 2026-11-26 (lần 7): lời gọi bị `deny` không còn tính là "Cảnh báo" (mock sinh `Denied by preToolUse hook: ...` như thật); lý do `deny` gửi model kèm danh sách tool được dùng (`denyHint`, không đổi quyền); console không in ✓ cho agent gặp lỗi chặn; gợi ý 403 dùng `az account get-access-token`. — xong 2026-11-26 (Home).
-- [ ] [Work] Chạy lại `pnpm brief` runtime `copilot`: "Cảnh báo" không còn `Denied by preToolUse hook`; đếm `deny` của code-reader (lần 6: 1, lần 7: 2).
+- [x] [Work] Chạy lại `pnpm brief` runtime `copilot`: "Cảnh báo" không còn `Denied by preToolUse hook`; đếm `deny` của code-reader (lần 6: 1, lần 7: 2). — 2026-11-26 lần 8: test 34/34, mock 3 kịch bản khớp Home; 55.0s, 33.11/120 AI Credits, 9 mục, 0 lỗi, **0 cảnh báo**; console 4 agent `✓`, không dòng `✗ … Denied`. Audit 26 bản ghi (25 `allow`, 1 `deny`), không tool ghi nào `allow`. code-reader 1 `deny` (`github-list_list_workflow_runs_placeholder`), tự sửa ngay sang `github-actions_list`.
 
 > Ghi chú Home: code ở `packages/core/src/*.ts` (mỗi mảng 1 file, chưa tách thư mục). Chạy end-to-end với `mock`; SDK thật (`byok`) đã kết nối được MCP. Tiêu chí dưới đây cần kiểm ở **[Work]**.
 
 **Tiêu chí xong:** chạy `pnpm brief` mỗi sáng ra báo cáo đúng, < 3 phút, nằm trong ngân sách credit đặt trước, không có tool ghi nào được gọi.
+
+**Phase 1: xong (2026-11-26).** Work lần 8: 4/4 agent ok, 55.0s, 33.11/120 AI Credits, 9 mục, không tool ghi nào được `allow`. Lần 2–8 đều dưới 80s và dưới ngân sách. Còn mở: user đối chiếu AI Credits với trang billing công ty.
+- [x] [Home] Theo work-feedback 2026-11-26 (lần 8): mock không phát `agent.completed` sau `agent.failed` (khớp `sdk.ts`); báo cáo mock/byok ghi `brief-<ngày>-<runtime>.html`, không ghi đè báo cáo thật. Mục A (đoán tên tool, 1 `deny`/lần): chấp nhận.
 
 ### Phase 2 — Dashboard realtime
 - [x] `apps/server`: Node service local giữ runtime, chỉ nghe `127.0.0.1`. — 2026-11-26: `node:http`, không thêm dependency; SSE (`GET /api/events`) thay WebSocket vì luồng chỉ chiều server → browser; lệnh qua `POST /api/run`, `/api/approvals/:id`, `/api/stop`. Chặn Host khác loopback (DNS rebinding), Origin khác, body không phải JSON (form cross-site). `pnpm hub`. Test `apps/server/test`.
@@ -257,7 +260,7 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
     | { type: "usage"; usedAiCredits: number; maxAiCredits: number }
     | { type: "message"; agent: string; text: string };
   ```
-- [ ] `apps/web` (React + Vite + `@xyflow/react`):
+- [x] `apps/web` (React + Vite + `@xyflow/react`): — 2026-11-26 (Home, `mock`): `pnpm dashboard` build rồi phục vụ ở `http://127.0.0.1:4317`. Trạng thái node: chờ / đang chạy / xong / có cảnh báo / cần bạn xử lý (lỗi chặn: đăng nhập, EULA, cấu hình) / lỗi. Lỗi model tự thử lại chỉ hiện trong log lần gọi. Panel auth: kiểm nhanh `gh auth status`, `az account get-access-token` (ADO dùng `ADO_AZURE_CONFIG_DIR`), không trả token, không tốn credit; Work IQ chỉ biết khi chạy. Báo cáo hiện ngay dưới (iframe `/report`, CSP không cho script).
   - Node: orchestrator, từng agent, từng MCP server (icon theo nguồn), trạng thái: idle / running / done / failed / auth-needed.
   - Edge orchestrator → agent → MCP server; **animated** khi có `tool.started` chưa `tool.completed`; đỏ khi lỗi.
   - Panel chi tiết khi click node: log tool call, thời gian, token.
@@ -265,9 +268,10 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
   - **Approval queue**: danh sách request chờ duyệt, xem args đầy đủ, nút Duyệt / Từ chối (kèm lý do → `feedback`).
   - Thanh credit đã dùng / ngân sách.
   - Ô chat để gõ "check việc" và các lệnh khác.
-- [ ] Nối `onPermissionRequest` / `onPreToolUse` → `approval.requested` → chờ người dùng trên UI.
+- [x] Nối `onPermissionRequest` / `onPreToolUse` → `approval.requested` → chờ người dùng trên UI. — gate trong `sdk.ts` chờ `ApprovalBox`; dashboard gửi `POST /api/approvals/:id`. Kiểm bằng mock (`brief-ok` có 1 yêu cầu ghi); agent đọc không bao giờ "ask", nên luồng thật chỉ dùng tới ở Phase 3.
+- [ ] [Work] `pnpm dashboard` runtime `copilot`: gõ "check việc", 4 agent sáng song song, edge nhấp nháy theo tool call thật, báo cáo hiện khi xong; tab Đăng nhập đúng với máy Work.
 
-**Tiêu chí xong:** gõ "check việc" trên dashboard, thấy các agent sáng lên song song, edge nhấp nháy theo tool call thật, báo cáo hiện khi xong.
+**Tiêu chí xong:** gõ "check việc" trên dashboard, thấy các agent sáng lên song song, edge nhấp nháy theo tool call thật, báo cáo hiện khi xong. — Home (`mock`) đạt 2026-11-26; chờ [Work] với tool call thật.
 
 ### Phase 3 — Agent có quyền ghi (có duyệt)
 - [ ] `comms-writer`: soạn nháp tin nhắn Teams (hỏi/chốt quyết định) → approval → gửi. Không có quyền đọc mail/Teams (nhận context đã được tóm tắt từ orchestrator).

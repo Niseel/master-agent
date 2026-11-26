@@ -409,3 +409,55 @@ Mẫu mỗi mục:
 - Thấy: HINT `InsufficientAccessError|Could not find workspace` (`report.ts`) vẫn ghi "kiểm tra `az account show`".
   Lần 6 cho thấy `az account show` đọc cache, không phát hiện token bị thu hồi.
 - Đề xuất: đổi thành `az account get-access-token` cho khớp HINT 401 và `docs/WORK.md`. Tuỳ chọn.
+
+## 2026-11-26 (lần 8) — kiểm thay đổi Home (test + mock)
+- Thấy: base `f100b61` (= `origin/main`). `pnpm install` exit 0, `pnpm typecheck` exit 0, `pnpm test` 34/34.
+- Thấy: `pnpm brief` runtime `mock` (báo cáo thật đã sao lưu trước, mock ghi đè `reports/brief-<ngày>.html`):
+  - `brief-auth`: 1 mục, 3 lỗi, **0 cảnh báo**, 4 dòng "Đã chặn". Console: `⚠ … không lấy được dữ liệu` cho
+    comms-reader, board-reader, cloud-reader; không còn dòng `✗ … Denied by preToolUse hook`.
+  - `brief-ok`: 10 mục, 0 lỗi, 1 cảnh báo.
+  - `brief-failures`: 0 mục, 4 lỗi, 0 cảnh báo.
+  - Khớp số liệu Home ghi trong handoff-copilot.md §1.
+- Thấy (nhỏ, chỉ mock): `brief-failures` in 2 dòng trạng thái cho cloud-reader: `✗ cloud-reader: Kết quả sai schema…`
+  (`agent.failed`) rồi `⚠ cloud-reader (0.5s): không lấy được dữ liệu` (`agent.completed`). Báo cáo HTML đúng.
+  Nguyên nhân: `packages/core/src/runtime/mock.ts` (dòng ~77) đổi `agent.result` sai schema thành `agent.failed` nhưng
+  vẫn phát `agent.completed` của kịch bản. `runtime/sdk.ts` (dòng ~153–157) chỉ phát một trong hai.
+- Đề xuất: tuỳ chọn, mock bỏ `agent.completed` của agent đã `agent.failed`, cho khớp `sdk.ts`. Không ảnh hưởng runtime thật.
+
+## 2026-11-26 (lần 8) — brief runtime `copilot`
+- Thấy: exit 0, 55.0s (tổng lệnh 56.7s), AI Credits 33.11 / 120 (lần 7: 34.59, lần 6: 26.88; trong khoảng ước tính
+  27–40), 9 mục (2 cần xử lý). Báo cáo: 0 lỗi, không có "Không lấy được", **0 cảnh báo**, "Bị chặn" 1 dòng.
+  code-reader 15.5s, board-reader 25.5s, cloud-reader 41.6s, comms-reader 53.9s.
+- Thấy: console 4 agent `✓`, không `⚠`, không dòng `✗`, 1 dòng `⛔` (code-reader).
+- Thấy: audit 26 bản ghi, 25 `allow`, 1 `deny`, không tool ghi nào được `allow`, không `github-mcp-server-*`.
+  Reason `deny` trong audit vẫn ngắn (`Tool <tên> không có trong allowlist của code-reader`), không chứa `denyHint`.
+  Báo cáo và console cũng không chứa `denyHint`.
+- Thấy: tham số thật (chỉ khoá):
+  - comms-reader: `workiq-ask` ×1, `workiq-fetch` ×1.
+  - code-reader: `get_me`, `list_pull_requests`, `actions_list` ×1 `{method:"list_workflow_runs", …}`,
+    `pull_request_read` ×2 (`method` `get_comments`, `get_review_comments`), 1 `deny` (mục dưới).
+  - board-reader: `wit_query` ×2, `wit_work_item` ×5.
+  - cloud-reader: `group_list` ×1, `group_resource_list` ×2, `azure-monitor` ×8 `{intent, parameters}`:
+    `monitor_workspace_list` ×1, `monitor_table_list` ×2, `monitor_workspace_log_query` ×3
+    (khoá `subscription, workspace, table, query, hours`), `monitor_activitylog_list` ×2
+    (khoá `subscription, resource-group, resource-name, hours`). 2 workspace, 1 subscription. Không lỗi tool.
+- Mock đang giả định: khớp.
+- Đề xuất: không sửa mock.
+
+## 2026-11-26 (lần 8) — kết quả mục A (đoán tên tool) và E (`deny` trong "Cảnh báo")
+- Thấy (E): đã hết. "Cảnh báo" không còn dòng `Denied by preToolUse hook`; báo cáo 0 cảnh báo, lời gọi bị chặn chỉ ở
+  "Bị chặn".
+- Thấy (A): giảm còn 1 `deny` (lần 7: 2, lần 6: 1). Thứ tự gọi của code-reader: `get_me` → `list_pull_requests` →
+  `github-list_list_workflow_runs_placeholder` (args `{}`, `deny`) → `github-actions_list`
+  `method:"list_workflow_runs"` (`allow`) → `pull_request_read` ×2. Model sửa ngay ở lượt kế tiếp, không thử tên khác.
+  code-reader 15.5s (lần 7: 20.6s).
+- Thấy: task code-reader (`packages/core/src/agents.ts` dòng ~156–157) đã nêu `actions_list` + `method`. Model vẫn ghép
+  tên từ giá trị `list_workflow_runs` thêm hậu tố `_placeholder`, args rỗng. Có thể là lời gọi giữ chỗ khi model gọi
+  song song.
+- Đề xuất: chấp nhận. Gate chặn đúng, chi phí ~1 lượt model, model tự sửa nhờ reason. Không thêm vào allowlist.
+  Nếu muốn thử thêm: mock `brief-auth` thêm tên `github-list_list_workflow_runs_placeholder` (args `{}`) để test
+  `denyHint` với tên dạng này. Tuỳ chọn.
+
+## 2026-11-26 (lần 8) — tài liệu
+- Thấy: tiêu đề `docs/handoff-copilot.md` ghi "lần 6", nội dung là bàn giao cho lần 8 (§3 bước 2 "lần 8").
+- Đề xuất: đặt tiêu đề theo số lần chạy Work kế tiếp khi viết handoff mới.
