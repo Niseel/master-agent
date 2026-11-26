@@ -1,4 +1,4 @@
-# Bàn giao Home → Work (2026-11-26, lần 5)
+# Bàn giao Home → Work (2026-11-26, lần 6)
 
 > Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md).
 > Bàn giao chiều ngược lại (Work → Home): [handoff-claude.md](handoff-claude.md).
@@ -13,35 +13,34 @@
 
 ## 1. Trạng thái
 
-- Home đã làm `handoff-claude.md` §3 (lần 6) mục 1–3, 5, 6. Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 33/33,
-  `pnpm brief` (mock) 3 kịch bản: `brief-ok` 10 mục / 0 lỗi / 1 cảnh báo; `brief-failures` 4 lỗi;
-  `brief-auth` 1 mục / 3 lỗi (có cloud-reader 401).
+- Home đã làm `handoff-claude.md` §3 (lần 7) mục 1–4. Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 34/34,
+  `pnpm brief` (mock): `brief-ok` 10 mục / 0 lỗi / 1 cảnh báo; `brief-failures` 4 lỗi;
+  `brief-auth` 1 mục / 3 lỗi / **0 cảnh báo**, 4 dòng "Đã chặn".
 
 ## 2. Home đã đổi gì
 
 | Phần | Thay đổi | Kiểm ở Work |
 |---|---|---|
-| `report.ts` | Lỗi 401 / `Azure credentials not found` / `AADSTS50173` / `invalid_grant` là **lỗi chặn**: agent hiện ở "Không lấy được" kèm gợi ý `az logout` + `az login`, kiểm bằng `az account get-access-token`. Lỗi tool không khớp gợi ý nào hiện ở "Cảnh báo" (trước: bị bỏ qua, báo cáo ghi 0 lỗi). | §3 bước 3 |
-| `agents.ts` | Task `code-reader`: workflow run dùng `actions_list` với `method: "list_workflow_runs"`. Không đổi `readTools`. | §3 bước 3 |
-| mock | `brief-auth` có 401 Azure thật và tên tool đoán sai `github-list_workflow_runs`. | Không cần |
-| `docs/WORK.md`, `.env.example` | `GITHUB_MCP_TOKEN` không bắt buộc; kiểm token Azure bằng `az account get-access-token`. | Đọc |
+| `report.ts` | Lỗi `Denied by preToolUse hook: …` không còn vào "Cảnh báo" (đã có ở "Đã chặn"). Gợi ý 403 dùng `az account get-access-token`. | §3 bước 2 |
+| `security.ts`, `runtime/sdk.ts` | Khi chặn, lý do gửi cho **model** kèm danh sách tool agent được dùng (`denyHint`). Quyết định allow/deny và `readTools` không đổi. Audit và báo cáo vẫn ghi lý do ngắn. | §3 bước 2 |
+| `apps/cli/src/brief.ts` | Console: không in `✗` cho lời gọi bị chặn; agent gặp lỗi chặn hoặc lỗi in `⚠ … không lấy được dữ liệu` thay cho `✓`. | §3 bước 2 |
+| mock | Lời gọi bị chặn sinh đúng chuỗi lỗi thật; `brief-auth` thêm tên đoán sai `github-list`. | Không cần |
 
 ## 3. Việc ở Work (theo thứ tự)
 
 PowerShell: chạy `[Console]::OutputEncoding = [Text.Encoding]::UTF8` trước khi ghi output ra file.
 
-1. **Đăng nhập lại Azure (user tự làm, tương tác):** `az logout`, rồi `az login` với đúng `AZURE_CONFIG_DIR`.
-   Kiểm: `az account get-access-token` trả token, không lỗi `AADSTS50173`.
-2. **Cài đặt:** `git pull`, `pnpm install`, `pnpm typecheck`, `pnpm test` (33 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
-3. **`pnpm brief` runtime `copilot` (lần 7, khoảng 27–40 AI Credits).** Ghi vào `docs/step0-results.md` mục 9:
+1. **Cài đặt:** `git pull`, `pnpm install`, `pnpm typecheck`, `pnpm test` (34 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
+   Nếu `pnpm brief` báo 401 Azure: kiểm `az account get-access-token` trước, đăng nhập lại nếu cần.
+2. **`pnpm brief` runtime `copilot` (lần 8, khoảng 27–40 AI Credits).** Ghi vào `docs/step0-results.md` mục 9:
    - tổng thời gian, thời gian từng agent, AI Credits, số mục, số lỗi, số cảnh báo;
-   - `cloud-reader`: gọi chuỗi `monitor_*` không lỗi như lần 5 (liệt kê lệnh đã gọi); nếu vẫn 401, báo cáo phải có
-     cloud-reader ở mục "Không lấy được" kèm gợi ý (không còn ✓);
-   - `code-reader`: không còn `deny` `github-list_workflow_runs`; dùng `actions_list`;
-   - audit `logs/audit-<ngày>.jsonl`: số bản ghi, `allow`/`deny`, không tool ghi nào `allow`;
-   - mục "Cảnh báo" của báo cáo: có dòng nào không (chép dạng cấu trúc: agent + mã lỗi, không chép dữ liệu).
-4. **Ghi và đẩy về:**
-   - `docs/step0-results.md`, `docs/work-feedback.md` (mục "lần 7"), dòng `[Work]` trong `PLAN.md`.
+   - mục "Cảnh báo": **không còn** dòng `Denied by preToolUse hook`;
+   - `code-reader`: số lần `deny` (lần 6: 1, lần 7: 2), tên tool bị chặn, sau đó có tự dùng `github-actions_list` không;
+     thời gian code-reader;
+   - console: không còn dòng `✗ … Denied by preToolUse hook`; agent nào in `⚠` thay cho `✓` (nếu có);
+   - audit `logs/audit-<ngày>.jsonl`: số bản ghi, `allow`/`deny`, không tool ghi nào `allow`.
+3. **Ghi và đẩy về:**
+   - `docs/step0-results.md`, `docs/work-feedback.md` (mục "lần 8"), dòng `[Work]` trong `PLAN.md`.
    - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home.
    - `git status` chỉ có file trong `docs/` và `PLAN.md`. Commit, push.
 

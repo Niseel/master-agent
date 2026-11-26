@@ -7,6 +7,9 @@
 
 ## 1. Trạng thái
 
+> **Home 2026-11-26:** xong §3 mục 1–4 (commit `7da37bb`, `e93dce3`). Việc Work tiếp theo:
+> [handoff-copilot.md](handoff-copilot.md).
+
 - Base `d33a9a0` (= `origin/main`). Work đã pull, `pnpm install` exit 0, `pnpm typecheck` sạch, `pnpm test` 33/33.
 - Mock (`brief-auth`, `brief-ok`, `brief-failures`): khớp số liệu Home ghi trong handoff-copilot.md §1.
   `brief-auth`: cloud-reader 401 ở "Không lấy được" kèm gợi ý mới.
