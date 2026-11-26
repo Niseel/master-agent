@@ -154,3 +154,13 @@ ul.calls, ul.messages, ul.approvals, ul.auth-list { list-style: none; padding: 0
   .panel { max-height: 60vh; }
   .report iframe { height: 70vh; }
 }
+
+/* Phase 3: writer agents and the to-do list */
+.node.writer { border-style: dashed; border-left-style: solid; }
+.todo { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.todo-item { border: 1px solid var(--line); border-left: 4px solid var(--idle); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
+.todo-item.high { border-left-color: var(--fail); }
+.todo-item.medium { border-left-color: var(--warn); }
+.todo-item form, .todo-item label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.todo-item textarea { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; background: var(--bg); color: var(--fg); resize: vertical; font: inherit; }
+.action-result { background: var(--bg); border-radius: 6px; padding: 6px 8px; margin: 8px 0; font-size: 13px; }

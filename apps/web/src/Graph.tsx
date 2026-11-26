@@ -20,11 +20,11 @@ export const SERVER_LABEL: Record<string, string> = {
 
 export type Selection = { kind: "orchestrator" } | { kind: "agent"; name: string } | { kind: "server"; name: string };
 
-type HubNodeData = { title: string; subtitle: string; status: NodeStatus; meta: string; selected: boolean };
+type HubNodeData = { title: string; subtitle: string; status: NodeStatus; meta: string; selected: boolean; writer?: boolean };
 
 function HubNode({ data }: NodeProps<Node<HubNodeData>>) {
   return (
-    <div className={`node ${data.status}${data.selected ? " selected" : ""}`}>
+    <div className={`node ${data.status}${data.selected ? " selected" : ""}${data.writer ? " writer" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-title">{data.title}</div>
       <div className="node-sub">{data.subtitle}</div>
@@ -59,7 +59,7 @@ export function Graph(props: {
       id: "orchestrator",
       type: "hub",
       position: { x: 0, y: top },
-      data: { title: "Orchestrator", subtitle: `${agents.length} agent song song`, status: orchStatus, meta: "", selected: isSel({ kind: "orchestrator" }) },
+      data: { title: "Orchestrator", subtitle: `${agents.filter((a) => a.kind === "reader").length} agent đọc song song`, status: orchStatus, meta: "", selected: isSel({ kind: "orchestrator" }) },
     },
   ];
   const edges: Edge[] = [];
@@ -71,7 +71,7 @@ export function Graph(props: {
       id: `agent:${a.name}`,
       type: "hub",
       position: { x: 300, y: i * rowH },
-      data: { title: a.displayName, subtitle: a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }) },
+      data: { title: a.displayName, subtitle: a.kind === "writer" ? `${a.name} · ghi, cần duyệt` : a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }), writer: a.kind === "writer" },
     });
     edges.push({
       id: `o>${a.name}`,

@@ -1,0 +1,7 @@
+{"event":{"type":"agent.started","agent":"board-writer","at":"2026-11-23T08:10:00Z"}}
+{"delayMs":150,"event":{"type":"tool.started","agent":"board-writer","server":"ado","tool":"wit_add_work_item_comment","callId":"w1","args":{"project":"Orders","workItemId":1234,"comment":"Đã chốt với team: hoàn tiền một phần từ 2 triệu trở lên cần kế toán duyệt. Cập nhật acceptance criteria theo."}}}
+{"delayMs":150,"when":"approved","event":{"type":"tool.completed","callId":"w1","ok":true}}
+{"delayMs":50,"when":"approved","event":{"type":"action.result","agent":"board-writer","summary":"Đã thêm comment vào work item #1234.","link":"https://dev.azure.com/org/proj/_workitems/edit/1234"}}
+{"delayMs":50,"when":"rejected","event":{"type":"action.result","agent":"board-writer","summary":"Không cập nhật: người dùng từ chối comment.","link":null}}
+{"delayMs":50,"event":{"type":"usage","agent":"board-writer","usedAiCredits":2.6,"maxAiCredits":30}}
+{"event":{"type":"agent.completed","agent":"board-writer","durationMs":700,"tokens":1600}}

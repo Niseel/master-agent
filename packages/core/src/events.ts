@@ -7,7 +7,10 @@ export type HubEvent =
   | { type: "agent.completed"; agent: string; durationMs?: number; tokens?: number }
   | { type: "agent.failed"; agent: string; error: string }
   | { type: "agent.result"; agent: string; items: BriefItem[] }
-  | { type: "tool.started"; agent: string; server: string; tool: string; callId: string }
+  /** Writer agents (Phase 3): what was done, or why not. */
+  | { type: "action.result"; agent: string; summary: string; link: string | null }
+  /** `args` is set by the mock runtime only (scenario files); the SDK runtime shows args on approval.requested. */
+  | { type: "tool.started"; agent: string; server: string; tool: string; callId: string; args?: unknown }
   | { type: "tool.completed"; callId: string; ok: boolean; error?: string }
   | { type: "approval.requested"; id: string; agent: string; tool: string; args: unknown }
   | { type: "approval.resolved"; id: string; decision: "approve" | "reject" }

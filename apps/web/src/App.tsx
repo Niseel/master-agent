@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hint } from "@agenthub/core/hints";
 import * as api from "./api.ts";
 import { Graph, SERVER_LABEL, STATUS_LABEL, type Selection } from "./Graph.tsx";
+import type { BriefItem } from "@agenthub/core/brief";
 import { derive, pending, type Approval, type Call, type Snapshot, type View } from "./state.ts";
 
 const secs = (ms?: number) => (ms === undefined ? "–" : `${(ms / 1000).toFixed(1)}s`);
 const AUTH_LABEL = { ok: "Đã đăng nhập", error: "Lỗi", mock: "Giả lập", unknown: "Chưa rõ" } as const;
 
-type Tab = "detail" | "approvals" | "auth";
+type Tab = "detail" | "todo" | "approvals" | "auth";
 
 export function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -26,7 +27,9 @@ export function App() {
         state: (s) => setSnap(s),
         hub: (e) => setSnap((s) => s && { ...s, events: [...s.events, e] }),
         run: (r) => {
-          setSnap((s) => s && { ...s, status: r.status, prompt: r.prompt ?? s.prompt, report: r.report ?? (r.status === "running" ? null : s.report), events: r.status === "running" ? [] : s.events });
+          // An act run (one writer) appends to the brief: keep its events and report.
+          const fresh = r.status === "running" && r.mode === "brief";
+          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), events: fresh ? [] : s.events });
           if (r.report) setReportKey(Date.now());
         },
         connection: setConnected,
@@ -138,6 +141,9 @@ export function App() {
             <button role="tab" aria-selected={tab === "detail"} onClick={() => setTab("detail")}>
               Chi tiết
             </button>
+            <button role="tab" aria-selected={tab === "todo"} onClick={() => setTab("todo")}>
+              Việc cần làm
+            </button>
             <button role="tab" aria-selected={tab === "approvals"} onClick={() => setTab("approvals")}>
               Duyệt{waiting.length ? <span className="badge">{waiting.length}</span> : null}
             </button>
@@ -147,6 +153,19 @@ export function App() {
           </nav>
           <div className="tab-body">
             {tab === "detail" && <Detail snap={snap} view={view} selection={selection} />}
+            {tab === "todo" && (
+              <Todo
+                snap={snap}
+                view={view}
+                running={running}
+                onAct={(agent, item, instruction) =>
+                  act(async () => {
+                    await api.actOn(agent, item, instruction);
+                    setSelection({ kind: "agent", name: agent });
+                  })
+                }
+              />
+            )}
             {tab === "approvals" && <Approvals view={view} onDecide={(id, d, f) => act(() => api.decide(id, d, f))} />}
             {tab === "auth" && <AuthPanel auth={auth} view={view} snap={snap} busy={authBusy} onCheck={checkAuth} />}
           </div>
@@ -256,13 +275,27 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
         <dd>{av.credits?.toFixed(2) ?? "–"}</dd>
         <dt>Token</dt>
         <dd>{av.tokens ?? "–"}</dd>
-        <dt>Mục</dt>
-        <dd>{av.items}</dd>
+        {info.kind === "reader" && (
+          <>
+            <dt>Mục</dt>
+            <dd>{av.items}</dd>
+          </>
+        )}
       </dl>
       {av.error && (
         <div className="problem">
           <div className="call-error">{av.error}</div>
           {av.hint && <div className="hint">→ {av.hint}</div>}
+        </div>
+      )}
+      {av.action && (
+        <div className="action-result">
+          <b>Kết quả:</b> {av.action.summary}{" "}
+          {av.action.link && /^https?:\/\//.test(av.action.link) && (
+            <a href={av.action.link} target="_blank" rel="noopener noreferrer">
+              Mở ↗
+            </a>
+          )}
         </div>
       )}
       <h4>Tool đã gọi ({av.calls.length})</h4>
@@ -306,7 +339,10 @@ function Approvals({ view, onDecide }: { view: View; onDecide: (id: string, d: "
   const done = view.approvals.filter((a) => a.decision);
   return (
     <div className="detail">
-      <p className="muted">Tool ghi luôn chờ bạn duyệt. Agent đọc không có tool ghi; yêu cầu ở đây là bất thường, đọc kỹ tham số trước khi duyệt.</p>
+      <p className="muted">
+        Mọi tool ghi chờ bạn duyệt, kèm đầy đủ tham số: đây là nội dung sẽ được gửi đi. Nội dung do agent soạn từ dữ liệu mail/chat, đọc kỹ trước khi duyệt.
+        Yêu cầu từ agent chỉ-đọc là bất thường.
+      </p>
       {waiting.length === 0 && <p>Không có yêu cầu nào đang chờ.</p>}
       <ul className="approvals">{waiting.map((ap) => <ApprovalCard key={ap.id} ap={ap} onDecide={onDecide} />)}</ul>
       {done.length > 0 && (
@@ -352,6 +388,72 @@ function AuthPanel({ auth, view, snap, busy, onCheck }: { auth: api.AuthStatus[]
                   {run.hint && <div className="hint">→ {run.hint}</div>}
                 </div>
               )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+const SOURCE_LABEL: Record<BriefItem["source"], string> = { outlook: "Outlook", teams: "Teams", ado: "Azure DevOps", github: "GitHub", azure: "Azure" };
+
+/** Brief items that need the user, each can be handed to the writer for its source (Phase 3). */
+function Todo({ snap, view, running, onAct }: { snap: Snapshot; view: View; running: boolean; onAct: (agent: string, item: BriefItem, instruction: string) => void }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const [instruction, setInstruction] = useState("");
+  const items = (snap.report?.items ?? []).map((item, i) => ({ item, i })).filter(({ item }) => item.actionRequired);
+  if (!snap.report) return <p className="muted detail">Chạy check việc trước: các mục cần bạn xử lý hiện ở đây.</p>;
+  return (
+    <div className="detail">
+      <p className="muted">Giao một mục cho agent ghi. Agent soạn nội dung, rồi chờ bạn duyệt ở tab Duyệt trước khi gửi.</p>
+      {items.length === 0 && <p>Không có mục nào cần xử lý.</p>}
+      <ul className="todo">
+        {items.map(({ item, i }) => {
+          const writer = snap.agents.find((a) => a.name === snap.writerFor[item.source]);
+          const result = writer && view.agents[writer.name];
+          return (
+            <li key={i} className={`todo-item ${item.priority}`}>
+              <div className="row">
+                <span className="chip">{SOURCE_LABEL[item.source]}</span>
+                <b>{item.title}</b>
+              </div>
+              <div className="muted">{item.summary}</div>
+              {item.suggestedAction && <div className="hint">Gợi ý: {item.suggestedAction}</div>}
+              {!writer ? (
+                <div className="muted">Chưa có agent ghi cho nguồn này.</div>
+              ) : open === i ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (instruction.trim()) onAct(writer.name, item, instruction.trim());
+                  }}
+                >
+                  <label>
+                    Việc giao cho {writer.displayName} (<code>{writer.name}</code>)
+                    <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={2000} autoFocus />
+                  </label>
+                  <div className="row">
+                    <button type="submit" className="primary" disabled={running || !instruction.trim()}>
+                      Soạn ▶
+                    </button>
+                    <button type="button" onClick={() => setOpen(null)}>
+                      Huỷ
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  disabled={running}
+                  onClick={() => {
+                    setOpen(i);
+                    setInstruction(item.suggestedAction ?? "");
+                  }}
+                >
+                  Giao việc: {writer.displayName}
+                </button>
+              )}
+              {result?.action && snap.mode === "act" && open === i && <div className="action-result">{result.action.summary}</div>}
             </li>
           );
         })}

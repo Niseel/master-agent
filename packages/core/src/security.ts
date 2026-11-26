@@ -24,12 +24,17 @@ export const looksLikeWrite = (tool: string) => segments(tool).some((s) => WRITE
 /**
  * The approval gate. `tool` is the runtime name `<server-key>-<tool>`.
  * Readers: allow only their own servers' read tools, deny everything else.
- * Writers (Phase 3): always "ask" -> approval queue.
+ * Writers (Phase 3): their writeTools always "ask" (approval queue), their readTools are allowed, the rest denied.
  */
 export function decide(agent: AgentSpec, tool: string): { decision: Decision; reason: string } {
   const own = Object.keys(agent.mcpServers).some((k) => tool.startsWith(`${k}-`));
   if (!own) return { decision: "deny", reason: `Tool ${tool} không thuộc MCP server của ${agent.name}` };
-  if (agent.kind === "writer") return { decision: "ask", reason: "Tool ghi cần người duyệt" };
+  if (agent.kind === "writer") {
+    if (agent.writeTools?.includes(tool)) return { decision: "ask", reason: "Tool ghi cần người duyệt" };
+    return agent.readTools !== "*" && agent.readTools.includes(tool)
+      ? { decision: "allow", reason: "Trong allowlist" }
+      : { decision: "deny", reason: `Tool ${tool} không có trong danh sách tool của ${agent.name}` };
+  }
   if (agent.readTools !== "*") {
     return agent.readTools.includes(tool)
       ? { decision: "allow", reason: "Trong allowlist" }
@@ -48,7 +53,7 @@ export { DENIED_PREFIX } from "./hints.ts";
  * Kept out of the audit/report reason so those stay short.
  */
 export const denyHint = (agent: AgentSpec) =>
-  agent.kind === "reader" && agent.readTools !== "*" ? ` Chỉ dùng các tool: ${agent.readTools.join(", ")}.` : "";
+  agent.readTools === "*" ? "" : ` Chỉ dùng các tool: ${[...agent.readTools, ...(agent.writeTools ?? [])].join(", ")}.`;
 
 const SECRET_KEY = /token|secret|password|passwd|api[-_]?key|authorization|cookie|credential/i;
 

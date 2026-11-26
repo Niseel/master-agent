@@ -5,7 +5,8 @@
  *   GET  /api/auth                sign-in state per source (no tokens, no AI Credits)
  *   GET  /report                  last report as HTML (no scripts allowed)
  *   GET  /*                       the built dashboard (apps/web/dist, `pnpm dashboard`)
- *   POST /api/run      {prompt}   start a run (409 while one is running)
+ *   POST /api/run      {prompt}   start a brief run with the reader agents (409 while one is running)
+ *   POST /api/act      {agent, item, instruction}  run one writer agent on a brief item (Phase 3); its writes wait for approval
  *   POST /api/approvals/:id {decision: "approve"|"reject", feedback?}
  *   POST /api/stop
  * SSE + POST instead of WebSocket: the stream only flows server -> browser, and node:http does both without a dependency.
@@ -15,13 +16,16 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { checkAuth } from "@agenthub/core/auth";
-import { readerAgents, type AgentSpec } from "@agenthub/core/agents";
+import { readerAgents, WRITER_FOR, writerAgents, writerTask, type AgentSpec } from "@agenthub/core/agents";
+import { BriefItem } from "@agenthub/core/brief";
 import type { HubConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
 import { renderReport, saveReport, type BriefReport } from "@agenthub/core/report";
-import { createRuntime, type AgentRuntime } from "@agenthub/core/runtime/index";
+import { createRuntime, type AgentRuntime, type RunInput } from "@agenthub/core/runtime/index";
 
 export type RunStatus = "idle" | "running" | "done" | "stopped";
+/** brief: the reader agents, makes a report. act: one writer on one brief item, appended to the brief's events. */
+export type RunMode = "brief" | "act";
 type Send = (event: "state" | "hub" | "run", data: unknown) => void;
 
 /** One run at a time. Holds the events so a browser that connects late sees the whole run. */
@@ -31,14 +35,20 @@ export class Hub {
   times: number[] = [];
   prompt = "";
   status: RunStatus = "idle";
+  mode: RunMode = "brief";
   report: { file: string; report: BriefReport } | null = null;
   private runtime: AgentRuntime | null = null;
   private stopping = false;
   private listeners = new Set<Send>();
+  readonly readers: AgentSpec[];
+  readonly writers: AgentSpec[];
+  /** Readers then writers: what the dashboard draws. */
   readonly agents: AgentSpec[];
 
   constructor(readonly cfg: HubConfig) {
-    this.agents = readerAgents(cfg);
+    this.readers = readerAgents(cfg);
+    this.writers = writerAgents(cfg);
+    this.agents = [...this.readers, ...this.writers];
   }
 
   state() {
@@ -53,6 +63,8 @@ export class Hub {
         missingConfig: a.missingConfig ?? null,
       })),
       status: this.status,
+      mode: this.mode,
+      writerFor: WRITER_FOR,
       prompt: this.prompt,
       events: this.events.map((event, i) => ({ at: this.times[i], event })),
       report: this.report && { file: this.report.file, ...this.report.report },
@@ -69,29 +81,50 @@ export class Hub {
     for (const send of this.listeners) send(event, data);
   };
 
-  /** Starts a run in the background. The returned promise ends with the run (tests await it; HTTP does not). */
-  async start(prompt: string) {
+  /** Starts a brief in the background. The returned promise ends with the run (tests await it; HTTP does not). */
+  start(prompt: string) {
+    return this.launch("brief", prompt, { prompt, agents: this.readers, budget: this.cfg.maxAiCredits });
+  }
+
+  /** Runs one writer on one brief item. Its events are appended, so the brief's graph and report stay. */
+  act(agent: unknown, item: unknown, instruction: unknown) {
+    const writer = this.writers.find((w) => w.name === agent);
+    if (!writer) throw new HttpError(400, "agent phải là một agent ghi");
+    const parsed = BriefItem.safeParse(item);
+    if (!parsed.success) throw new HttpError(400, "item không đúng schema BriefItem");
+    if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 2000) {
+      throw new HttpError(400, "instruction phải là chuỗi 1–2000 ký tự");
+    }
+    const spec = { ...writer, task: writerTask(parsed.data) };
+    // A writer gets one session; MIN_SESSION_CREDITS in sdk.ts raises this if needed.
+    return this.launch("act", instruction.trim(), { prompt: instruction.trim(), agents: [spec], budget: 30, scenario: `act-${writer.name}` });
+  }
+
+  private async launch(mode: RunMode, prompt: string, input: RunInput) {
     if (this.status === "running") throw new HttpError(409, "Đang có lượt chạy");
     this.status = "running";
-    this.events = [];
-    this.times = [];
+    this.mode = mode;
+    if (mode === "brief") {
+      this.events = [];
+      this.times = [];
+      this.report = null;
+    }
     this.prompt = prompt;
-    this.report = null;
     this.stopping = false;
-    this.emit("run", { status: this.status, prompt });
+    this.emit("run", { status: this.status, mode, prompt });
     const t0 = Date.now();
     const done = (async () => {
       try {
         const rt = (this.runtime = await createRuntime(this.cfg));
-        for await (const ev of rt.run({ prompt, agents: this.agents, budget: this.cfg.maxAiCredits })) this.push(ev);
+        for await (const ev of rt.run(input)) this.push(ev);
       } catch (e) {
         this.push({ type: "agent.failed", agent: "orchestrator", error: e instanceof Error ? e.message : String(e) });
       } finally {
         await this.runtime?.stop();
         this.runtime = null;
-        this.report = saveReport(this.cfg, this.events, Date.now() - t0);
+        if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0);
         this.status = this.stopping ? "stopped" : "done";
-        this.emit("run", { status: this.status, report: { file: this.report.file, ...this.report.report } });
+        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report } });
       }
     })();
     return { done };
@@ -195,7 +228,7 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
       const route = `${req.method} ${url.pathname}`;
 
       if (route === "GET /api/state") return json(res, 200, hub.state());
-      if (route === "GET /api/auth") return json(res, 200, await checkAuth(hub.agents, hub.cfg.runtime));
+      if (route === "GET /api/auth") return json(res, 200, await checkAuth(hub.readers, hub.cfg.runtime));
       if (route === "GET /report") {
         if (!hub.report) throw new HttpError(404, "Chưa có báo cáo: chạy check việc trước");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-security-policy": REPORT_CSP });
@@ -210,6 +243,11 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
       if (route === "POST /api/run") {
         const { prompt } = await readJson(req);
         await hub.start(typeof prompt === "string" && prompt.trim() ? prompt.trim() : "check việc");
+        return json(res, 202, { status: hub.status });
+      }
+      if (route === "POST /api/act") {
+        const { agent, item, instruction } = await readJson(req);
+        await hub.act(agent, item, instruction);
         return json(res, 202, { status: hub.status });
       }
       const approval = req.method === "POST" && url.pathname.match(/^\/api\/approvals\/([^/]+)$/);

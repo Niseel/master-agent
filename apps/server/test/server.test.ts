@@ -104,6 +104,37 @@ test("server: only loopback Host, same-origin JSON requests; approval without a 
   }
 });
 
+test("server: act runs one writer on a brief item, after the brief; bad input is 400; the report stays", async () => {
+  const { hub, server, post } = await start("brief-ok");
+  try {
+    const brief = await hub.start("check việc");
+    for (let i = 0; i < 200 && !hub.events.some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
+    hub.resolveApproval((hub.events.find((e) => e.type === "approval.requested") as { id: string }).id, "reject");
+    await brief.done;
+    const report = hub.report;
+    const item = report!.report.items.find((i) => i.source === "teams")!;
+
+    assert.equal((await post("/api/act", { agent: "comms-reader", item, instruction: "x" })).status, 400, "a reader cannot act");
+    assert.equal((await post("/api/act", { agent: "comms-writer", item: { title: "x" }, instruction: "x" })).status, 400);
+    assert.equal((await post("/api/act", { agent: "comms-writer", item, instruction: " " })).status, 400);
+
+    const before = hub.events.length;
+    const { done } = await hub.act("comms-writer", item, "Trả lời B: ngưỡng 2 triệu");
+    assert.equal((await post("/api/act", { agent: "comms-writer", item, instruction: "x" })).status, 409, "one run at a time");
+    for (let i = 0; i < 200 && !hub.events.slice(before).some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
+    const req = hub.events.slice(before).find((e) => e.type === "approval.requested") as Extract<HubEvent, { type: "approval.requested" }>;
+    assert.equal(req.tool, "workiq-create_entity");
+    assert.equal((await post(`/api/approvals/${req.id}`, { decision: "approve" })).status, 200);
+    await done;
+    assert.equal(hub.mode, "act");
+    assert.ok(hub.events.length > before && hub.events[0].type === "agent.started", "brief events kept, act appended");
+    assert.ok(hub.events.some((e) => e.type === "action.result" && e.link));
+    assert.equal(hub.report, report, "an act run does not replace the brief report");
+  } finally {
+    server.close();
+  }
+});
+
 test("server: stop rejects pending approvals and ends the run as stopped", async () => {
   const { hub, server } = await start("brief-ok");
   try {

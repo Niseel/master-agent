@@ -18,3 +18,7 @@ export type BriefItem = z.infer<typeof BriefItem>;
 /** What each reader agent must return. Passed to sendAndWait as the response schema. */
 export const AgentResult = z.object({ items: z.array(BriefItem) });
 export type AgentResult = z.infer<typeof AgentResult>;
+
+/** What a writer agent returns (Phase 3). */
+export const ActionResult = z.object({ summary: z.string(), link: z.string().nullable() });
+export type ActionResult = z.infer<typeof ActionResult>;

@@ -7,6 +7,8 @@ export interface RunInput {
   agents: AgentSpec[];
   /** Total AI Credit budget for this run. */
   budget: number;
+  /** Mock runtime only: scenario to replay instead of cfg.scenario (writer runs use `act-<agent>`). */
+  scenario?: string;
 }
 
 export interface AgentRuntime {

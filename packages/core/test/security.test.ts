@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
+import { adoConfigDirProblem, readerAgents, writerAgents, type AgentSpec } from "../src/agents.ts";
 import { loadConfig, normalizeRepo } from "../src/config.ts";
 import { mcpAuth, sessionTools, waitForMcp } from "../src/runtime/sdk.ts";
 import { audit, decide, denyHint, looksLikeWrite, redact } from "../src/security.ts";
@@ -73,10 +73,31 @@ test("mcpAuth only hands out tokens for known origins", async () => {
   assert.deepEqual(r, { kind: "cancelled" });
 });
 
-test("writer: every own tool needs approval", () => {
-  const w = { ...reader, kind: "writer" as const };
-  assert.equal(decide(w, "workiq-mail_send").decision, "ask");
-  assert.equal(decide(w, "github-create_pull_request").decision, "deny");
+test("writer: listed write tools need approval, listed reads pass, anything else is denied", async () => {
+  const w: AgentSpec = { ...reader, kind: "writer", readTools: ["workiq-get_schema"], writeTools: ["workiq-create_entity"] };
+  assert.equal(decide(w, "workiq-create_entity").decision, "ask");
+  assert.equal(decide(w, "workiq-get_schema").decision, "allow");
+  assert.equal(decide(w, "workiq-retrieve").decision, "deny", "a writer does not read mail/chat");
+  assert.equal(decide(w, "workiq-delete_entity").decision, "deny", "unlisted write");
+  assert.equal(decide(w, "github-create_pull_request").decision, "deny", "other server");
+  assert.deepEqual(sessionTools(w), ["mcp:workiq-get_schema", "mcp:workiq-create_entity"]);
+  assert.match(denyHint(w), /workiq-create_entity/);
+
+  for (const runtime of ["mock", "copilot"] as const) {
+    const cfg = { ...(await loadConfig(root)), runtime };
+    for (const a of writerAgents(cfg)) {
+      assert.equal(a.kind, "writer");
+      assert.ok(Array.isArray(a.readTools) && a.writeTools?.length, `${a.name} has explicit lists`);
+      for (const t of a.writeTools!) assert.equal(decide(a, t).decision, "ask", `${a.name} ${t}`);
+      for (const t of a.readTools as string[]) assert.equal(looksLikeWrite(t), false, `${a.name} read list holds a write: ${t}`);
+      const fn = { comms: ["retrieve", "ask", "fetch"], board: ["wit_query", "wit_work_item"], code: ["get_file_contents", "pull_request_read"] };
+      const own = Object.keys(a.mcpServers)[0];
+      for (const t of fn[a.name.split("-")[0] as keyof typeof fn]) assert.equal(decide(a, `${own}-${t}`).decision, "deny", `${a.name} reads no content: ${t}`);
+    }
+  }
+  // Readers keep their read-only headers; writers drop them (they write), so their lists are the only limit.
+  const real = { ...(await loadConfig(root)), runtime: "copilot" as const };
+  for (const a of readerAgents(real)) assert.equal(a.writeTools, undefined, `${a.name} has no write tools`);
 });
 
 test("redact hides secrets at any depth", () => {
@@ -165,11 +186,10 @@ test("code-reader task names workflow runs via actions_list, a tool it may call"
   assert.ok(!(a.readTools as string[]).includes("github-list_workflow_runs"));
 });
 
-test("denyHint: a denied reader learns its allowed tools; writers and '*' get nothing extra", async () => {
+test("denyHint: a denied agent learns its allowed tools; '*' gets nothing extra", async () => {
   const code = readerAgents(await loadConfig(root)).find((x) => x.name === "code-reader")!;
   assert.match(denyHint(code), /^ Chỉ dùng các tool: github-get_me, .*github-actions_list/);
   assert.equal(denyHint(reader), "", "readTools '*' has no list");
-  assert.equal(denyHint({ ...code, kind: "writer" }), "");
   // The audit/report reason stays short; only the model gets the list.
   assert.ok(!decide(code, "github-list").reason.includes("Chỉ dùng"));
 });

@@ -10,7 +10,7 @@ import {
 } from "@github/copilot-sdk";
 import type { AgentSpec } from "../agents.ts";
 import { az } from "../auth.ts";
-import { AgentResult } from "../brief.ts";
+import { ActionResult, AgentResult } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
 import { audit, decide, denyHint } from "../security.ts";
@@ -70,8 +70,12 @@ export async function waitForMcp(s: Pick<CopilotSession, "rpc">, names: string[]
  * them, each try cost a model turn). `mcp:<name>` takes the runtime wire name `<server>-<tool>` (toolSet.d.ts).
  * decide() stays the second layer.
  */
-export const sessionTools = (a: Pick<AgentSpec, "readTools">) =>
-  a.readTools === "*" ? ["mcp:*"] : a.readTools.map((t) => `mcp:${t}`);
+export const sessionTools = (a: Pick<AgentSpec, "readTools" | "writeTools">) =>
+  a.readTools === "*" ? ["mcp:*"] : [...a.readTools, ...(a.writeTools ?? [])].map((t) => `mcp:${t}`);
+
+/** A writer's turn includes waiting for the user on the approval queue. */
+// ponytail: fixed 15 min; make it configurable if users leave approvals open longer.
+export const WRITER_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * Real Copilot SDK runtime. Used for both:
@@ -144,8 +148,14 @@ export class SdkRuntime implements AgentRuntime {
       });
       const stuck = await waitForMcp(s, Object.keys(a.mcpServers));
       if (stuck.length) q.push({ type: "message", agent: a.name, text: `MCP chưa kết nối sau 60s: ${stuck.join(", ")}` });
-      const result = await s.sendAndWait({ prompt: `${input.prompt}\n\n${a.task}` }, AgentResult, this.cfg.timeoutMs);
-      q.push({ type: "agent.result", agent: a.name, items: result.items });
+      const prompt = [input.prompt, a.task].filter(Boolean).join("\n\n");
+      if (a.kind === "writer") {
+        const r = await s.sendAndWait({ prompt }, ActionResult, Math.max(this.cfg.timeoutMs, WRITER_TIMEOUT_MS));
+        q.push({ type: "action.result", agent: a.name, ...r });
+      } else {
+        const result = await s.sendAndWait({ prompt }, AgentResult, this.cfg.timeoutMs);
+        q.push({ type: "agent.result", agent: a.name, items: result.items });
+      }
       q.push({ type: "agent.completed", agent: a.name, durationMs: Date.now() - t0 });
     } catch (e) {
       q.push({ type: "agent.failed", agent: a.name, error: errMsg(e) });

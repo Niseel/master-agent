@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
-import { AgentResult } from "../brief.ts";
+import { ActionResult, AgentResult } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
 import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
@@ -11,6 +11,8 @@ import { ApprovalBox, type AgentRuntime, type RunInput } from "./index.ts";
 /** One line of fixtures/scenarios/*.jsonl */
 interface Step {
   delayMs?: number;
+  /** Replay only if the last approval in this run was approved / rejected. */
+  when?: "approved" | "rejected";
   event: HubEvent;
 }
 
@@ -23,8 +25,8 @@ export class MockRuntime implements AgentRuntime {
   private stopped = false;
   constructor(private cfg: HubConfig) {}
 
-  async *run({ agents }: RunInput): AsyncIterable<HubEvent> {
-    const file = path.join(this.cfg.root, "fixtures/scenarios", `${this.cfg.scenario}.jsonl`);
+  async *run({ agents, scenario }: RunInput): AsyncIterable<HubEvent> {
+    const file = path.join(this.cfg.root, "fixtures/scenarios", `${scenario ?? this.cfg.scenario}.jsonl`);
     const steps: Step[] = readFileSync(file, "utf8")
       .split("\n")
       .filter((l) => l.trim())
@@ -36,9 +38,11 @@ export class MockRuntime implements AgentRuntime {
     const callAgent = new Map<string, string>();
     // Like sdk.ts: an agent ends with agent.failed OR agent.completed, never both.
     const failed = new Set<string>();
+    let lastApproval: "approved" | "rejected" | undefined;
 
-    for (const { delayMs = 0, event: ev } of steps) {
+    for (const { delayMs = 0, when, event: ev } of steps) {
       if (this.stopped) return;
+      if (when && when !== lastApproval) continue;
       if (delayMs) await sleep(delayMs);
 
       if ("agent" in ev && ev.agent && !active(ev.agent)) continue;
@@ -48,9 +52,23 @@ export class MockRuntime implements AgentRuntime {
         // A tool no server offers (model guessed the name) arrives as server "builtin" with the full name.
         const runtimeName = ev.server === "builtin" ? ev.tool : `${ev.server}-${ev.tool}`;
         const { decision, reason } = decide(agent, runtimeName);
-        audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: {}, decision, reason });
+        audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision, reason });
         callAgent.set(ev.callId, agent.name);
         yield ev;
+        if (decision === "ask") {
+          // Like the SDK gate: the call waits for the user; a rejection comes back to the model as a denied call.
+          const wait = this.approvals.wait(ev.callId);
+          yield { type: "approval.requested", id: ev.callId, agent: agent.name, tool: runtimeName, args: ev.args ?? {} };
+          const r = await wait;
+          audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision: r.decision, reason: r.feedback ?? "user" });
+          yield { type: "approval.resolved", id: ev.callId, decision: r.decision };
+          lastApproval = r.decision === "approve" ? "approved" : "rejected";
+          if (r.decision === "reject") {
+            yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + (r.feedback ?? "Người dùng từ chối") };
+            callAgent.delete(ev.callId);
+          }
+          continue;
+        }
         if (decision === "deny") {
           // Same error the real runtime reports for a denied call.
           yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + denyHint(agent) };
@@ -82,6 +100,15 @@ export class MockRuntime implements AgentRuntime {
         }
         yield { ...ev, items: parsed.data.items };
         continue;
+      }
+
+      if (ev.type === "action.result") {
+        const parsed = ActionResult.safeParse({ summary: ev.summary, link: ev.link });
+        if (!parsed.success) {
+          failed.add(ev.agent);
+          yield { type: "agent.failed", agent: ev.agent, error: `Kết quả sai schema: ${z.prettifyError(parsed.error).replaceAll("\n", "; ")}` };
+          continue;
+        }
       }
 
       if (ev.type === "agent.failed") failed.add(ev.agent);

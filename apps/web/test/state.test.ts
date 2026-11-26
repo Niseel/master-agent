@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { readerAgents } from "@agenthub/core/agents";
+import { readerAgents, writerAgents } from "@agenthub/core/agents";
 import { loadConfig } from "@agenthub/core/config";
 import { MockRuntime } from "@agenthub/core/runtime/mock";
 import { derive, pending, type AgentInfo, type Timed } from "../src/state.ts";
@@ -66,4 +66,26 @@ test("dashboard state: missing config and failed agents", async () => {
   const cfgMissing = derive([{ name: "x", displayName: "X", kind: "reader", servers: ["azure"], missingConfig: "Chưa cấu hình AZURE_SUBSCRIPTION" }], []);
   assert.equal(cfgMissing.agents.x.status, "needs-action");
   assert.match(cfgMissing.agents.x.hint!, /\.env/);
+});
+
+test("dashboard state: a writer run appended to the brief shows its result; repeated ids resolve the open approval", async () => {
+  const { agents, events } = await replay("brief-ok");
+  const cfg = await loadConfig(root);
+  const writers = writerAgents(cfg);
+  const all: AgentInfo[] = [...agents, ...writers.map((a) => ({ ...a, servers: Object.keys(a.mcpServers), missingConfig: a.missingConfig ?? null }))];
+  const briefItems = derive(agents, events).agents["code-reader"].items;
+  let t = events.at(-1)!.at;
+  for (const decision of ["reject", "approve"] as const) {
+    const rt = new MockRuntime(cfg);
+    for await (const event of rt.run({ prompt: "Trả lời B", agents: writers, budget: 30, scenario: "act-comms-writer" })) {
+      events.push({ at: (t += 10), event });
+      if (event.type === "approval.requested") rt.resolveApproval(event.id, decision);
+    }
+  }
+  const v = derive(all, events);
+  assert.equal(v.agents["comms-writer"].status, "done", "a rejected earlier run does not stick");
+  assert.ok(v.agents["comms-writer"].action?.link, "last run sent");
+  assert.deepEqual(v.approvals.map((a) => a.decision), ["reject", "reject", "approve"]);
+  assert.equal(v.agents["code-reader"].items, briefItems, "brief state kept");
+  assert.equal(v.usedAiCredits, 31.5 + 3.2, "writer credits add to the brief total");
 });

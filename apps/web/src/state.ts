@@ -1,6 +1,7 @@
 /**
  * Run events -> what the dashboard shows (node states, tool calls, approvals, credits). Pure, so node:test covers it.
  */
+import type { BriefItem } from "@agenthub/core/brief";
 import type { HubEvent } from "@agenthub/core/events";
 import { DENIED_PREFIX, findHint, hint } from "@agenthub/core/hints";
 
@@ -13,9 +14,10 @@ export interface AgentInfo {
 }
 export type Timed = { at: number; event: HubEvent };
 export type RunStatus = "idle" | "running" | "done" | "stopped";
+export type RunMode = "brief" | "act";
 export interface ReportSummary {
   file: string;
-  items: unknown[];
+  items: BriefItem[];
   failures: Record<string, string>;
   warnings?: string[];
   blocked?: string[];
@@ -27,6 +29,9 @@ export interface Snapshot {
   maxAiCredits: number;
   agents: AgentInfo[];
   status: RunStatus;
+  mode: RunMode;
+  /** Which writer agent acts on an item of each source. */
+  writerFor: Partial<Record<BriefItem["source"], string>>;
   prompt: string;
   events: Timed[];
   report: ReportSummary | null;
@@ -58,6 +63,8 @@ export interface AgentView {
   hint?: string | null;
   calls: Call[];
   messages: string[];
+  /** Writers: what the last run did, or why not. */
+  action?: { summary: string; link: string | null };
 }
 export interface ServerView {
   status: NodeStatus;
@@ -103,7 +110,8 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
     const agent = "agent" in ev && ev.agent ? view.agents[ev.agent] : undefined;
     switch (ev.type) {
       case "agent.started":
-        if (agent) Object.assign(agent, { status: "running", startedAt: at });
+        // A writer can run many times on top of one brief: each run starts clean.
+        if (agent) Object.assign(agent, { status: "running", startedAt: at, durationMs: undefined, error: undefined, hint: undefined, action: undefined });
         break;
       case "tool.started": {
         const call: Call = { callId: ev.callId, agent: ev.agent, server: ev.server, tool: ev.tool, startedAt: at };
@@ -138,6 +146,9 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
       case "agent.result":
         if (agent) agent.items += ev.items.length;
         break;
+      case "action.result":
+        if (agent) agent.action = { summary: ev.summary, link: ev.link };
+        break;
       case "agent.completed":
         if (!agent) break;
         Object.assign(agent, { durationMs: ev.durationMs, tokens: ev.tokens });
@@ -158,7 +169,8 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
         view.approvals.push({ id: ev.id, agent: ev.agent, tool: ev.tool, args: ev.args, at });
         break;
       case "approval.resolved": {
-        const ap = view.approvals.find((a) => a.id === ev.id);
+        // Ids can repeat across runs appended to one brief (mock call ids): resolve the open one.
+        const ap = view.approvals.find((a) => a.id === ev.id && !a.decision);
         if (ap) ap.decision = ev.decision;
         break;
       }
@@ -183,8 +195,9 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
       else if (srv.calls) srv.status = "done";
     }
   }
-  const perAgent = Object.values(view.agents).reduce((sum, a) => sum + (a.credits ?? 0), 0);
-  view.usedAiCredits = Math.max(usedTotal, perAgent);
+  // The brief's total covers the readers; writer runs come after it and add their own.
+  const sum = (kind: AgentInfo["kind"]) => agents.filter((a) => a.kind === kind).reduce((n, a) => n + (view.agents[a.name].credits ?? 0), 0);
+  view.usedAiCredits = Math.max(usedTotal, sum("reader")) + sum("writer");
   return view;
 }
 
