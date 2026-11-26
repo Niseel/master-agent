@@ -157,3 +157,10 @@ test("sessionTools: the model sees only allowlisted MCP tools, never the built-i
     for (const t of tools) assert.match(t, /^mcp:[a-zA-Z0-9_-]+$/);
   }
 });
+
+test("code-reader task names workflow runs via actions_list, a tool it may call", async () => {
+  const a = readerAgents(await loadConfig(root)).find((x) => x.name === "code-reader")!;
+  assert.match(a.task, /`actions_list` với `method: "list_workflow_runs"`/);
+  assert.ok((a.readTools as string[]).includes("github-actions_list"));
+  assert.ok(!(a.readTools as string[]).includes("github-list_workflow_runs"));
+});

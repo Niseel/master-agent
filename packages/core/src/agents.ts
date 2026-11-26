@@ -152,7 +152,10 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       prompt: prompt("Bạn là agent đọc GitHub: pull request, review, pipeline."),
       task:
         `Với các repo: ${cfg.github.repos.join(", ") || "(mọi repo tôi tham gia)"}. ` +
-        "Liệt kê (source=github): PR đang chờ tôi review, PR của tôi có comment mới, workflow run fail trong 24h.",
+        "Liệt kê (source=github): PR đang chờ tôi review, PR của tôi có comment mới, workflow run fail trong 24h. " +
+        // Found at Work 2026-11-26: the model guessed a `list_workflow_runs` tool, which does not exist.
+        "Workflow run: dùng tool `actions_list` với `method: \"list_workflow_runs\"` (không có tool `list_workflow_runs` riêng). " +
+        "Chỉ gọi tool có trong danh sách tool của bạn.",
       mcpServers: {
         github: {
           type: "http",
