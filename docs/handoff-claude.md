@@ -7,6 +7,9 @@
 
 ## 1. Trạng thái
 
+> **Home 2026-11-26:** xong §3 mục 1–3, 5, 6 (mục 4 không cần sửa). Việc Work tiếp theo:
+> [handoff-copilot.md](handoff-copilot.md).
+
 - Base `f37ebf7` (= `origin/main`). Work đã pull, `pnpm install`. `pnpm typecheck` sạch, `pnpm test` 31/31 xanh.
 - `pnpm smoke <agent> --tools`: model thấy 5/15/4/7 tool (comms/code/cloud/board), tất cả trong allowlist, không
   còn `github-mcp-server-*`. Mục 1 lần 5 (`availableTools`) có tác dụng.

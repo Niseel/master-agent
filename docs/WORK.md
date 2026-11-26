@@ -50,10 +50,10 @@ Chạy lần lượt. Mỗi lệnh đặt `maxAiCredits: 30` (mức tối thiể
 
 | Agent | Lệnh | Cần chuẩn bị |
 |---|---|---|
-| GitHub | `pnpm smoke code-reader` | `.env`: `GITHUB_MCP_TOKEN` = `gh auth token` (thử cả để trống, xem Copilot có tự auth không), `GITHUB_REPOS` |
+| GitHub | `pnpm smoke code-reader` | `.env`: `GITHUB_REPOS`. `GITHUB_MCP_TOKEN` không bắt buộc: để trống thì server vẫn kết nối bằng đăng nhập của Copilot CLI (kiểm ở Work 2026-11-26, 32 tool); đặt `gh auth token` nếu muốn chắc |
 | Azure DevOps | `pnpm smoke board-reader` | `.env`: `ADO_ORG`, `ADO_PROJECT`. Lần đầu có thể mở trình duyệt đăng nhập Entra |
 | Outlook/Teams | `pnpm smoke comms-reader` | Chạy trước 1 lần: `npx -y @microsoft/workiq accept-eula`. Có thể hiện màn hình xin **admin consent** |
-| Azure Monitor | `pnpm smoke cloud-reader` | `az login` (Azure MCP chạy với `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`, nên dùng đúng tài khoản `az account show`; tài khoản này cần quyền đọc workspace); `.env`: `AZURE_SUBSCRIPTION`, `AZURE_LOG_WORKSPACE` (cách nhau bằng dấu phẩy; 1 subscription cho mọi workspace, hoặc mỗi workspace một subscription cùng thứ tự) |
+| Azure Monitor | `pnpm smoke cloud-reader` | `az login` (Azure MCP chạy với `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`, nên dùng đúng tài khoản `az account show`; tài khoản này cần quyền đọc workspace). Kiểm token còn dùng được bằng `az account get-access-token`: `az account show` đọc cache, vẫn ok khi token đã bị thu hồi (lỗi `AADSTS50173` / `invalid_grant`, thường sau khi đổi mật khẩu; sửa: `az logout` rồi `az login`); `.env`: `AZURE_SUBSCRIPTION`, `AZURE_LOG_WORKSPACE` (cách nhau bằng dấu phẩy; 1 subscription cho mọi workspace, hoặc mỗi workspace một subscription cùng thứ tự) |
 
 Mỗi lệnh in mọi event SDK. Ghi vào step0-results.md: thành công/thất bại, **tên event và mã lỗi**,
 không chép nội dung trả về.
