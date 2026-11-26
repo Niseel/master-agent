@@ -1,37 +1,36 @@
-# Bàn giao Work → Home (2026-11-26, lần 8)
+# Bàn giao Work → Home (2026-11-26, lần 9)
 
 > Cho Claude Code ở Home. Chỉ thông tin cấu trúc, không có dữ liệu công ty.
-> Đọc kèm: [PLAN.md](../PLAN.md), [work-feedback.md](work-feedback.md) (các mục "2026-11-26 (lần 8)"),
-> [step0-results.md](step0-results.md) (dòng 9).
-> Bàn giao trước: 2026-11-26 lần 7 (Home xong mục 1–4; base `d33a9a0`).
+> Đọc kèm: [PLAN.md](../PLAN.md), [work-feedback.md](work-feedback.md) (các mục "2026-11-26 (lần 9)"),
+> [step0-results.md](step0-results.md) (dòng 7 và 9), [mcp-tools-writers.md](mcp-tools-writers.md) (mới).
+> Bàn giao trước: 2026-11-26 lần 8 (base `f100b61`).
 
 ## 1. Trạng thái
 
-> **Home 2026-11-26:** xong §3 mục 1 (mock), mục 2 chấp nhận, mục 3 (đánh số handoff theo lần chạy Work). Thêm: Phase 2
-> dashboard (`pnpm dashboard`), Phase 3 agent ghi có duyệt (`mock`). Việc Work tiếp theo: [handoff-copilot.md](handoff-copilot.md)
-> (lần 9 + Phase 3 bước 5–6).
+> **Home 2026-11-26:** xong §3 mục 1–6 và phần tuỳ chọn `HEAD /qa/*`, tool built-in bị từ chối (test). Nhãn "Loại (đoán)"
+> chưa sửa (chỉ hiển thị). `docs/mcp-tools-writers.md` gửi về là bản chép nhầm của file này, không commit: Work sinh lại.
+> Việc Work tiếp theo: [handoff-copilot.md](handoff-copilot.md) (lần 10).
 
-- Base `f100b61` (= `origin/main`). Work đã pull, `pnpm install` exit 0, `pnpm typecheck` sạch, `pnpm test` 34/34.
-- Mock (`brief-auth`, `brief-ok`, `brief-failures`): khớp số liệu Home ghi trong handoff-copilot.md §1.
-  `brief-auth`: 0 cảnh báo, 4 dòng "Đã chặn", console `⚠` cho 3 agent lỗi chặn.
-- `pnpm brief` runtime `copilot` lần 8: exit 0, 55.0s (tổng lệnh 56.7s), 33.11/120 AI Credits, 9 mục (2 cần xử lý),
-  0 lỗi, **0 cảnh báo**. Audit 26 bản ghi, 25 `allow`, 1 `deny`, không tool ghi nào được `allow`.
-- **E (`deny` trong "Cảnh báo") đã hết:** không còn chuỗi `Denied by preToolUse hook` trong báo cáo và console.
-- **Console đã sửa:** 4 agent `✓`, không dòng `✗`, chỉ 1 dòng `⛔`.
-- **`denyHint` không rò:** audit, báo cáo, console vẫn ghi reason ngắn.
-- **A (đoán tên tool) giảm:** code-reader 1 `deny` (lần 7: 2, lần 6: 1), tên `github-list_list_workflow_runs_placeholder`
-  (args `{}`), lượt kế tiếp gọi đúng `github-actions_list`. code-reader 15.5s (lần 7: 20.6s). Work đề xuất chấp nhận.
-- cloud-reader: 11 lần gọi, không lỗi tool (`monitor_*` ×8), đọc cả 2 workspace. 41.6s.
+- Base `0f4b421` (= `origin/main`). `pnpm install` exit 0, `pnpm typecheck` exit 0, `pnpm test` 51/51.
+- `corepack pnpm dashboard` lỗi ở Work (script gọi `pnpm` trần). Chạy được bằng build web + `tsx apps/server/src/main.ts`.
+- Dashboard: auth github/ado/azure `ok`, workiq `unknown`; sơ đồ 14 node / 16 cạnh; console 0 lỗi; 600/800px không tràn.
+- **Check việc** (runtime `copilot`): 52.8s, 31.39/120, 6 mục, 0 lỗi, 0 cảnh báo, 4 agent song song. Audit 27 dòng,
+  1 `deny` (đoán tên, tự sửa). **Lỗi mới:** 1 mục Outlook rỗng (title/summary rỗng).
+- **Giao việc (Phase 3) bị chặn:** board-writer 0 lời gọi tool vì tên trong `BOARD_WRITE` không có trên server ADO
+  thật. Duyệt/Từ chối chưa kiểm được. Không có mục GitHub để thử code-writer.
+- **QA:** 3/3 Đạt, 6.49 credit, 14 lời gọi `allow`, nhưng có cảnh báo: gọi song song làm 1 chapter lỗi và lớp phủ dính
+  vào ảnh; tab `_blank` sinh `qa-1.webm`, báo cáo nhúng nhầm video đó; thanh credit không cộng QA.
 
 | Mục | Kết quả |
 |---|---|
 | Copilot SDK + license | ok |
 | GitHub MCP (`code-reader`) | ok. 1 `deny` do đoán tên, tự sửa ngay |
 | ADO Remote MCP (`board-reader`) | ok |
-| Work IQ (`comms-reader`) | ok |
+| Work IQ (`comms-reader`) | ok, nhưng trả 1 mục rỗng |
 | Azure MCP (`cloud-reader`) | ok |
-| Playwright MCP | ok ở Work |
-| `pnpm brief` runtime `copilot` | Lần 8: 55.0s, 33.11/120. Lần 7: 75.7s, 34.59. Lần 6: 76.3s, 26.88. Lần 5: 49.5s, 40.06. Lần 4: 46.5s, 39.29. Lần 3: 77.4s, 39.25. Lần 2: 60.5s, 44.29 |
+| Playwright MCP (smoke + QA) | ok; QA có cảnh báo (xem trên) |
+| Agent ghi (Phase 3) | **Chặn**: tên tool ghi ADO sai, 0 lời gọi |
+| Check việc runtime `copilot` | Lần 9: 52.8s, 31.39/120 (tổng lần 9 ≈ 39.39 gồm giao việc + QA). Lần 8: 55.0s, 33.11. Lần 7: 75.7s, 34.59. Lần 6: 76.3s, 26.88. Lần 5: 49.5s, 40.06. Lần 4: 46.5s, 39.29. Lần 3: 77.4s, 39.25. Lần 2: 60.5s, 44.29 |
 
 ## 2. Thay đổi trong commit này (Work)
 
@@ -39,32 +38,38 @@ Chỉ đổi tài liệu. Không đổi code, quyền hay danh tính.
 
 | File | Nội dung |
 |---|---|
-| `docs/step0-results.md` | Dòng 9: lần 8 |
-| `docs/work-feedback.md` | Các mục "2026-11-26 (lần 8)": test + mock, brief lần 8, kết quả A và E, tài liệu |
-| `PLAN.md` | Tick `[Work]` chạy lại brief sau khi Home sửa lần 7 |
+| `docs/step0-results.md` | Dòng 7 (smoke) và 9 (dashboard, giao việc, QA): lần 9 |
+| `docs/work-feedback.md` | Các mục "2026-11-26 (lần 9)" |
+| `docs/mcp-tools-writers.md` | Mới, sinh bởi `pnpm list-tools --writers` |
+| `PLAN.md` | Cập nhật các dòng `[Work]` Phase 2–4 |
 | `docs/handoff-claude.md` | File này |
 
-## 3. Việc cho Home (theo thứ tự, đều nhỏ hoặc tuỳ chọn)
+## 3. Việc cho Home (theo thứ tự)
 
-Chi tiết: [work-feedback.md](work-feedback.md), các mục "2026-11-26 (lần 8)". Mọi mục phải chạy được end-to-end với
+Chi tiết: [work-feedback.md](work-feedback.md), các mục "2026-11-26 (lần 9)". Mọi mục phải chạy được end-to-end với
 `mock` ở Home.
 
-1. **Tuỳ chọn: mock phát 2 trạng thái cho agent sai schema.** `brief-failures`: console in
-   `✗ cloud-reader: Kết quả sai schema…` rồi `⚠ cloud-reader (0.5s): …`. `mock.ts` (dòng ~77) đổi `agent.result` sai
-   schema thành `agent.failed` nhưng vẫn phát `agent.completed` của kịch bản; `sdk.ts` chỉ phát một trong hai. Sửa
-   mock cho khớp `sdk.ts`. Runtime thật không bị.
-2. **Mục A: đề xuất chấp nhận.** 1 `deny` mỗi lần chạy, gate chặn đúng, model tự sửa ngay. Tuỳ chọn: thêm tên
-   `github-list_list_workflow_runs_placeholder` (args `{}`) vào mock `brief-auth`.
-3. **Tài liệu:** tiêu đề `handoff-copilot.md` đang ghi "lần 6" nhưng là bàn giao lần 8. Khi viết handoff mới, đánh số
-   theo lần chạy Work kế tiếp.
-4. Nếu Home đổi code: `pnpm typecheck` + `pnpm test` xanh với `AGENTHUB_RUNTIME=mock`, thêm dòng `[Home]` trong
-   `PLAN.md`, viết `docs/handoff-copilot.md` mới với đúng việc Work cần kiểm. Nếu không đổi code: không cần chạy lại
-   brief thật.
+1. **Tên tool ghi ADO** (`agents.ts` dòng 242): `wit_add_work_item_comment`, `wit_update_work_item` không tồn tại. Tên
+   thật `wit_work_item_comment_write`, `wit_work_item_write` (gộp nhiều hành động theo `action`). Thêm `readTools`
+   `wit_work_item` cho board-writer (dòng 280). Tuỳ chọn: gate giới hạn `action`. Cập nhật `mock-mcp` (dòng ~159) và
+   `fixtures/scenarios/act-board-writer.jsonl`. Ghi thay đổi quyền trong commit message.
+2. **Task QA** (`qa.ts` dòng ~80–83): gọi tuần tự; chụp ảnh trước chapter kế tiếp; dừng video/trace/đóng sau tiêu chí
+   cuối; không click link `target=_blank`.
+3. **Video QA** (`qa.ts` dòng 136): ưu tiên `qa.webm` (hoặc liệt kê mọi video).
+4. **Credit QA** (`apps/web/src/state.ts` dòng 209): cộng `sum("tester")`.
+5. **Mục rỗng:** task reader nói "không có gì thì `items: []`", orchestrator bỏ mục title + summary rỗng. Thêm vào mock.
+6. **Script `dashboard`** (`package.json` dòng 17): không gọi `pnpm` trần (Work dùng `corepack pnpm`).
+7. Tuỳ chọn: sửa nhãn "Loại (đoán)" trong `list-tools --writers`; `HEAD` cho `/qa/*`; xác nhận tool built-in
+   (git, gh, curl, shell) không có trong session writer.
+
+Sau đó viết `docs/handoff-copilot.md` (lần 10) với: chạy lại giao việc board-writer, Từ chối, kiểm audit `ask`/`deny`;
+chạy lại QA và kiểm ảnh, video, credit.
 
 ## 4. Việc còn lại ở Work
 
+- Lần 10: kiểm lại giao việc (cần mục ADO hoặc GitHub) và QA sau khi Home sửa.
 - User đối chiếu AI Credits (lần 2: 44.29, lần 3: 39.25, lần 4: 39.29, lần 5: 40.06, lần 6: 26.88, lần 7: 34.59,
-  lần 8: 33.11) với trang billing công ty.
+  lần 8: 33.11, lần 9: 31.39 brief / ≈39.39 tổng) với trang billing công ty.
 - Tuỳ chọn: góp ý thiết kế dashboard ([design/dashboard.excalidraw](design/dashboard.excalidraw)).
 
 ## 5. Ràng buộc

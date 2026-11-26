@@ -1,6 +1,6 @@
-# Bàn giao Home → Work (2026-11-26, cho lần chạy Work 9 + Phase 3 + Phase 4)
+# Bàn giao Home → Work (2026-11-26, cho lần chạy Work 10)
 
-> Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md) (mục 5c).
+> Cho Copilot agent mode ở Work. Đọc kèm: [AGENTS.md](../AGENTS.md), [WORK.md](WORK.md) (§5c, §5d, §5e).
 > Bàn giao chiều ngược lại (Work → Home): [handoff-claude.md](handoff-claude.md).
 
 ## 0. Vai trò
@@ -8,90 +8,66 @@
 **Work chỉ chạy app và kiểm chứng. Không sửa code.** Claude Code ở Home viết toàn bộ code (AGENTS.md).
 
 - Không sửa: `apps/`, `packages/`, `scripts/`, `fixtures/`, `package.json`, `pnpm-lock.yaml`, `agenthub.config.ts`.
-- Chỉ ghi vào: `docs/step0-results.md`, `docs/work-feedback.md`, `docs/handoff-claude.md`, dòng `[Work]` trong `PLAN.md`.
+- Chỉ ghi vào: `docs/step0-results.md`, `docs/work-feedback.md`, `docs/handoff-claude.md`, `docs/mcp-tools-writers.md`
+  (sinh bằng lệnh), dòng `[Work]` trong `PLAN.md`.
 - Gặp lỗi cần sửa code: ghi đề xuất vào `docs/work-feedback.md` (lệnh, file nghi ngờ, mã lỗi đã xoá dữ liệu thật).
 
 ## 1. Trạng thái
 
-- Phase 1 xong (lần 8 đạt tiêu chí). Phase 2 (dashboard) xong ở Home với `mock`, chờ Work kiểm với `copilot`.
-- Phase 3 (agent ghi có duyệt) xong ở Home với `mock`, chờ Work lấy tên tool ghi thật (§3 bước 5–6).
-- Phase 4 (agent nghiệm thu `qa`, Playwright) xong ở Home với `mock`; báo cáo nghiệm thu đã dựng từ file Playwright thật
-  (ảnh + trace; Home chưa có FFmpeg nên chưa có video). Chờ Work (§3 bước 7).
-  **Nếu đã chạy xong bước 1–4 của lần 9:** `git pull`, `pnpm install`, `pnpm test`, rồi chỉ làm bước 5–7.
-- Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 39/39, `pnpm brief` (mock) 3 kịch bản, dashboard trên trình duyệt
-  với `brief-ok` (duyệt / từ chối, báo cáo) và `brief-auth` (3 nguồn "Cần bạn xử lý", tab Đăng nhập).
+- Lần 9: Phase 2 đạt; QA 3/3 nhưng có 3 lỗi; giao việc bị chặn vì tên tool ghi ADO sai. Home đã sửa hết (§2).
+- **`docs/mcp-tools-writers.md` lần 9 gửi về là bản chép nhầm của `handoff-claude.md`** (hai file giống hệt). Home không
+  commit file đó. Cần sinh lại (§3 bước 2).
+- Kiểm ở Home: `pnpm typecheck` xanh, `pnpm test` 52/52, mock 3 kịch bản brief + 3 giao việc + 1 nghiệm thu,
+  `pnpm dashboard` (script mới) build + chạy với `mock`.
 
 ## 2. Home đã đổi gì
 
 | Phần | Thay đổi | Kiểm ở Work |
 |---|---|---|
-| `apps/web` (mới) | Dashboard React + `@xyflow/react`: sơ đồ orchestrator → agent → MCP server, panel Chi tiết / Duyệt / Đăng nhập, thanh credit, báo cáo. **Dependency mới:** react 19.3.1, react-dom 19.3.1, @xyflow/react 12.12.1, vite 8.3.8 (chỉ build, chạy local). | §3 bước 2–3 |
-| `apps/server` | Phục vụ giao diện, `GET /api/auth`, `GET /report`, CSP. Chỉ `127.0.0.1`. | §3 bước 2–3 |
-| `packages/core/src/auth.ts` (mới) | Kiểm `gh auth status`, `az account get-access-token --query expiresOn` (ADO với `ADO_AZURE_CONFIG_DIR`). Không trả token. | §3 bước 2 |
-| `report.ts` | Báo cáo mock/byok ghi `brief-<ngày>-mock.html` / `-byok.html`: thử mock ở Work không còn ghi đè báo cáo thật. | §3 bước 1 |
-| mock | Agent lỗi không phát thêm `agent.completed` (khớp `sdk.ts`). | Không cần |
-| Phase 3: `agents.ts` `writerAgents()` | 3 agent ghi: `comms-writer` (Work IQ `create_entity`), `board-writer` (ADO, **không** header chỉ-đọc), `code-writer` (GitHub `create_branch` / `create_pull_request` / `add_issue_comment`). Tên tool ghi **chưa kiểm**. | §3 bước 5 |
-| Phase 3: `security.ts` | Writer: tool trong `writeTools` → hỏi người dùng; trong `readTools` → cho; còn lại → từ chối. Agent đọc không đổi. | §3 bước 6 |
-| Phase 3: dashboard | Tab **Việc cần làm**: chọn mục báo cáo → giao cho agent ghi → tab Duyệt. `POST /api/act`. | §3 bước 6 |
-| `scripts/list-tools.ts` | Cờ `--writers` ghi `docs/mcp-tools-writers.md`. | §3 bước 5 |
-| Phase 4: `packages/core/src/qa.ts` (mới) | Agent `qa` (kind `tester`): Playwright MCP 0.0.86 headless, `--isolated`, `--allowed-origins`; 22 tool trình duyệt, `browser_navigate` chỉ tới origin được kiểm. Báo cáo `reports/qa-<thời gian>/index.html`. | §3 bước 7 |
-| Phase 4: dashboard + `playwright-smoke` | Tab **Nghiệm thu**, `POST /api/qa`, `GET /qa/<lượt>/`. Smoke ghi thêm `index.html`. | §3 bước 7 |
-
-Quyền của agent đọc không đổi: `readTools`, danh tính Azure, cờ `--read-only` giữ nguyên. Quyền mới: 3 agent ghi,
-mọi lần ghi đều chờ người dùng duyệt; agent `qa` điều khiển trình duyệt headless chỉ trên trang được kiểm.
+| `package.json` `dashboard` | `tsx scripts/dashboard.ts`: build `apps/web` bằng Vite API rồi mở server. Không gọi `pnpm` lồng, nên `corepack pnpm dashboard` chạy được. | §3 bước 1 |
+| board-writer (`agents.ts`) | **Đổi quyền:** `writeTools` = `ado-wit_work_item_comment_write`, `ado-wit_work_item_write` (tên thật lần 9); `readTools` = `ado-wit_work_item` (đọc work item đang sửa). Mỗi lời gọi ghi vẫn chờ duyệt, kèm đủ tham số (`action` hiện ở đó). | §3 bước 3 |
+| Agent `qa` (`qa.ts`) | Task: gọi từng tool một; chapter `duration` 1000 + `browser_wait_for` 1.5s trước khi chụp; dừng video/trace/đóng sau tiêu chí cuối; không bấm link `target=_blank`. Báo cáo ưu tiên `qa.webm`, video khác liệt kê riêng. | §3 bước 4 |
+| Dashboard | Thanh credit cộng phần của `qa`. `HEAD /qa/*` trả 200/404 như `GET`. | §3 bước 4 |
+| Reader | Prompt: "không có gì thì `items: []`". Mục có `title` và `summary` đều rỗng bị bỏ, agent ghi thông báo "Bỏ N mục rỗng". | §3 bước 5 |
 
 ## 3. Việc ở Work (theo thứ tự)
 
-1. **Cài đặt:** `git pull`, `pnpm install` (có package mới: react, vite, @xyflow/react; ghi lại nếu proxy chặn),
-   `pnpm typecheck`, `pnpm test` (51 test). Đỏ thì dừng, ghi lỗi vào work-feedback.
-   Tuỳ chọn: `pnpm brief` với `AGENTHUB_RUNTIME=mock` ghi `reports/brief-<ngày>-mock.html`, không đụng báo cáo thật.
-2. **Dashboard, chưa chạy (không tốn credit):**
+1. **Cài đặt:** `git pull`, `corepack pnpm install`, `corepack pnpm typecheck`, `corepack pnpm test` (52 test). Đỏ thì
+   dừng, ghi lỗi vào work-feedback. Rồi:
    ```powershell
    $env:AGENTHUB_RUNTIME = "copilot"
-   pnpm dashboard
+   corepack pnpm dashboard
    ```
-   Mở `http://127.0.0.1:4317`. Ghi lại:
-   - build có lỗi không; trang có hiện sơ đồ 4 agent + 4 MCP server không;
-   - tab **Đăng nhập**: trạng thái từng nguồn (github, ado, azure: "Đã đăng nhập" hay lỗi gì, chỉ ghi mã lỗi;
-     workiq: "Chưa rõ"). Không chép thời hạn token hay tên tài khoản.
-3. **Dashboard, chạy thật (lần 9, khoảng 27–40 AI Credits):** gõ "check việc", bấm **Chạy**. Ghi lại:
-   - 4 agent có chuyển "Đang chạy" cùng lúc không; edge có nhấp nháy khi gọi tool không; node nào kết thúc ở trạng
-     thái gì (Xong / Có cảnh báo / Cần bạn xử lý / Lỗi);
-   - bấm vào từng agent: danh sách tool đã gọi có khớp audit không (chỉ đếm, không chép tham số);
-   - khung **Báo cáo** có hiện sau khi xong không; số mục / lỗi / cảnh báo / credits / thời gian;
-   - thời gian, AI Credits so với `pnpm brief` lần 8 (55.0s, 33.11);
-   - audit `logs/audit-<ngày>.jsonl`: không tool ghi nào `allow`;
-   - console trình duyệt (F12) có lỗi đỏ không (chỉ ghi thông báo lỗi, đã xoá dữ liệu thật);
-   - tuỳ chọn: thu hẹp cửa sổ < 860px, giao diện có dùng được không.
-5. **Tên tool ghi thật (không tốn credit, không gọi tool):** `pnpm list-tools --writers` (runtime `copilot`) →
-   `docs/mcp-tools-writers.md`. Ghi vào work-feedback: tên nào trong `writeTools` / `readTools` của writer (agents.ts)
-   **không có** trong danh sách, và tên thật tương ứng (gửi tin Teams qua Work IQ, comment / đổi trạng thái work item
-   ADO, branch / PR / comment GitHub). Server nào không kết nối được: ghi status + mã lỗi.
-6. **Giao việc trên dashboard, chỉ từ chối (khoảng 30 AI Credits trần, thường ít hơn):** sau một lượt check việc, tab
-   **Việc cần làm** → chọn một mục GitHub hoặc ADO → **Giao việc** → **Soạn**. Khi tab Duyệt hiện yêu cầu: **bấm Từ chối**
-   (không Duyệt; gửi thật chỉ khi người dùng tự quyết). Ghi lại:
-   - agent có gọi đúng tool ghi không (tên tool, chỉ tên tham số, không chép nội dung);
-   - sau Từ chối, agent có dừng không, kết quả trong Chi tiết; audit có `ask` rồi `reject`;
-   - nếu agent không thấy tool nào (tên sai): thông báo lỗi.
-7. **Nghiệm thu (khoảng 30 AI Credits trần):**
-   - `pnpm playwright-smoke`: mong đợi `Smoke Playwright: ok`; mở `reports/playwright-smoke/index.html`, có ảnh, video
-     phát được, link trace. Ghi lại thời gian, có lỗi không.
-   - Dashboard (runtime `copilot`), sau một lượt check việc: tab **Nghiệm thu**, giữ URL mặc định
-     (`http://127.0.0.1:4317/report`, trang báo cáo local) và 3 tiêu chí mẫu → **Chạy nghiệm thu**. Ghi lại: số tool đã
-     gọi, có tool nào bị chặn (tên tool + lý do), kết quả từng tiêu chí (Đạt / Không đạt / Không kiểm được), có
-     `ac-*.png`, `qa.webm`, `traces/` trong `reports/qa-*/` không, video có chapter không, thời gian, AI Credits.
-     Không chụp màn hình báo cáo vào repo (trang báo cáo có dữ liệu thật).
-8. **Ghi và đẩy về:**
-   - `docs/step0-results.md` (thêm dòng "Dashboard runtime copilot"), `docs/work-feedback.md` (mục "lần 9"), dòng `[Work]`
-     Phase 2 trong `PLAN.md`.
-   - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home (góp ý giao diện ghi dạng cấu trúc).
-   - `docs/mcp-tools-writers.md` (chỉ tên tool + mô tả, như mcp-tools.md).
-   - `git status` chỉ có file trong `docs/` và `PLAN.md`. Commit, push.
+   Ghi lại: lệnh có chạy thẳng được không (dòng `Đã build apps/web` rồi `Agent Hub API: ...`).
+2. **Sinh lại danh sách tool ghi (không tốn credit):** `corepack pnpm list-tools --writers` (runtime `copilot`). Mở
+   `docs/mcp-tools-writers.md`: dòng đầu phải là `# MCP tools`, có 3 mục `workiq`, `ado`, `github`. Kiểm có
+   `ado-wit_work_item_comment_write`, `ado-wit_work_item_write`, `ado-wit_work_item`. Commit file này (chỉ tên + mô tả).
+3. **Giao việc board-writer, chỉ Từ chối (khoảng 30 AI Credits trần, thường ít hơn):** chạy check việc → tab **Việc cần
+   làm** → mục Azure DevOps → **Giao việc** (ví dụ "Thêm comment: đã xem, sẽ cập nhật sau") → **Soạn**. Khi tab
+   **Duyệt** hiện yêu cầu: **bấm Từ chối**, không bấm Duyệt. Ghi lại:
+   - tên tool trong yêu cầu duyệt; **tên tham số và giá trị `action`** (vd. `action: "add"`), không chép nội dung comment
+     hay id thật;
+   - board-writer có gọi `ado-wit_work_item` trước không (allow, không cần duyệt);
+   - sau Từ chối: agent dừng, kết quả trong Chi tiết; audit có dòng `ask` rồi `reject`, không có `allow` cho tool ghi.
+4. **Nghiệm thu lại (khoảng 30 AI Credits trần):** tab **Nghiệm thu**, URL mặc định + 3 tiêu chí mẫu. Ghi lại:
+   - model có gọi tool tuần tự không (mỗi lượt 1 tool), có tool lỗi không (`browser_video_chapter` lần 9 lỗi);
+   - ảnh `ac-*.png` có dính lớp phủ chapter không;
+   - chỉ có `qa.webm` hay còn `qa-*.webm`; báo cáo nhúng video nào;
+   - thanh credit sau lượt QA có cộng phần QA không (so với số credit QA trong Chi tiết của node qa);
+   - thời gian, AI Credits, kết quả từng tiêu chí.
+5. **Mục rỗng:** sau check việc ở bước 3, báo cáo còn thẻ rỗng không; Chi tiết của comms-reader có thông báo
+   "Bỏ N mục rỗng" không.
+6. **Ghi và đẩy về:**
+   - `docs/step0-results.md`, `docs/work-feedback.md` (mục "lần 10"), dòng `[Work]` Phase 3 + Phase 4 trong `PLAN.md`.
+   - `docs/handoff-claude.md`: §1 trạng thái mới, §3 đề xuất cho Home.
+   - `docs/mcp-tools-writers.md` (bước 2).
+   - `git status` chỉ có file trong `docs/` và `PLAN.md`. **Kiểm `docs/mcp-tools-writers.md` khác `docs/handoff-claude.md`**
+     trước khi commit. Commit, push.
 
 ## 4. Ràng buộc
 
 - Không có dữ liệu công ty trong repo: không tên org, project, tenant, tài khoản, workspace; không nội dung mail,
-  chat, work item, log, câu KQL/WIQL thật; **không chụp màn hình dashboard vào repo**. Áp dụng cả cho commit message.
+  chat, work item, log, câu KQL/WIQL thật; **không chụp màn hình dashboard hay báo cáo vào repo**. Áp dụng cả cho commit message.
 - Không sửa code (§0). Không dùng `approveAll`, không đổi `readTools`, `writeTools`, `security.ts`, quyền, danh tính.
-- Không bấm Duyệt cho agent ghi trong lúc kiểm thử (bước 6). Duyệt = gửi thật tới người khác.
+- Không bấm Duyệt cho agent ghi trong lúc kiểm thử (bước 3). Duyệt = gửi thật tới người khác.
 - Không commit `.env`, `logs/`, `reports/`, `apps/web/dist/`, token.

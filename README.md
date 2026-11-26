@@ -19,10 +19,10 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | `pnpm brief` + báo cáo HTML | ✅ `mock`; ✅ `byok` thật ở Home (login Copilot cá nhân, 3 agent, ~47s, model gắn nhãn mail chứa prompt injection, không gọi tool ghi) |
 | Bước 0 ở Work (auth, Work IQ, ADO, Azure, tên tool thật) | ✅ |
 | Phase 1: `pnpm brief` runtime `copilot` ở Work | ✅ lần 8: 4/4 agent, 55s, 33/120 AI Credits, không tool ghi nào được gọi |
-| Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ⏳ [Work] kiểm với runtime `copilot` |
+| Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ✅ Work lần 9 (runtime `copilot`, 52.8s, 31.39/120 AI Credits) |
 | Playwright MCP smoke (`pnpm playwright-smoke`) | ✅ ở Work (video + ảnh + trace) |
-| Phase 3: agent ghi có duyệt (Teams, ADO, GitHub) | ✅ `mock` ở Home; ⏳ [Work] tên tool ghi thật (`pnpm list-tools --writers`) |
-| Phase 4: nghiệm thu bằng Playwright (agent `qa`, báo cáo có ảnh / video / trace) | ✅ `mock` ở Home, báo cáo từ file Playwright thật; ⏳ [Work] lượt chạy với model thật |
+| Phase 3: agent ghi có duyệt (Teams, ADO, GitHub) | ✅ `mock` ở Home; tên tool ghi kiểm ở Work lần 9 (ADO đã sửa); ⏳ [Work] lượt giao việc + Từ chối |
+| Phase 4: nghiệm thu bằng Playwright (agent `qa`, báo cáo có ảnh / video / trace) | ✅ `mock` ở Home; Work lần 9: 3/3 đạt, 6.49 AI Credits, 3 lỗi đã sửa; ⏳ [Work] chạy lại |
 
 ## Tính năng dùng được (MVP)
 
