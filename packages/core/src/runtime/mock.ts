@@ -34,6 +34,8 @@ export class MockRuntime implements AgentRuntime {
     for (const a of agents) if (a.missingConfig) yield { type: "agent.failed", agent: a.name, error: a.missingConfig };
     const active = (name: string) => byName.has(name) && !byName.get(name)!.missingConfig;
     const callAgent = new Map<string, string>();
+    // Like sdk.ts: an agent ends with agent.failed OR agent.completed, never both.
+    const failed = new Set<string>();
 
     for (const { delayMs = 0, event: ev } of steps) {
       if (this.stopped) return;
@@ -74,6 +76,7 @@ export class MockRuntime implements AgentRuntime {
       if (ev.type === "agent.result") {
         const parsed = AgentResult.safeParse({ items: ev.items });
         if (!parsed.success) {
+          failed.add(ev.agent);
           yield { type: "agent.failed", agent: ev.agent, error: `Kết quả sai schema: ${z.prettifyError(parsed.error).replaceAll("\n", "; ")}` };
           continue;
         }
@@ -81,6 +84,8 @@ export class MockRuntime implements AgentRuntime {
         continue;
       }
 
+      if (ev.type === "agent.failed") failed.add(ev.agent);
+      if (ev.type === "agent.completed" && failed.has(ev.agent)) continue;
       yield ev;
     }
   }

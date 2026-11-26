@@ -47,6 +47,7 @@ test("mock e2e: failures don't break the run; bad schema becomes agent.failed", 
   const failed = ev.filter((e) => e.type === "agent.failed").map((e) => (e as { agent: string }).agent);
   assert.deepEqual(failed.sort(), ["board-reader", "cloud-reader", "code-reader", "comms-reader"]);
   assert.equal(ev.filter((e) => e.type === "agent.result").length, 0);
+  assert.equal(ev.filter((e) => e.type === "agent.completed").length, 0, "a failed agent does not also complete (as in sdk.ts)");
 });
 
 test("report: action items first, links only http(s), HTML escaped", () => {

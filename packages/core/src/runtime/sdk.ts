@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import { promisify } from "node:util";
 import {
   CopilotClient,
   type CopilotSession,
@@ -11,6 +9,7 @@ import {
   type SessionHooks,
 } from "@github/copilot-sdk";
 import type { AgentSpec } from "../agents.ts";
+import { az } from "../auth.ts";
 import { AgentResult } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
@@ -39,14 +38,9 @@ const ENTRA_MCP: Record<string, { scope: string; configDirEnv: string }> = {
 export const mcpAuth: NonNullable<SessionConfig["onMcpAuthRequest"]> = async (req) => {
   const srv = ENTRA_MCP[new URL(req.serverUrl).origin];
   if (!srv) return { kind: "cancelled" };
-  const args = ["account", "get-access-token", "--scope", srv.scope, "--query", "accessToken", "-o", "tsv"];
-  // az is a .cmd shim on Windows; args are constants, so cmd /c is safe.
-  const [cmd, argv]: [string, string[]] = process.platform === "win32" ? ["cmd", ["/c", "az", ...args]] : ["az", args];
-  const configDir = process.env[srv.configDirEnv];
-  const env = configDir ? { ...process.env, AZURE_CONFIG_DIR: configDir } : process.env;
   try {
-    const { stdout } = await promisify(execFile)(cmd, argv, { timeout: 60_000, env });
-    return stdout.trim() ? { kind: "token", accessToken: stdout.trim() } : { kind: "cancelled" };
+    const token = await az(["account", "get-access-token", "--scope", srv.scope, "--query", "accessToken", "-o", "tsv"], process.env[srv.configDirEnv]);
+    return token ? { kind: "token", accessToken: token } : { kind: "cancelled" };
   } catch {
     return { kind: "cancelled" };
   }

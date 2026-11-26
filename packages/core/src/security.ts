@@ -40,8 +40,7 @@ export function decide(agent: AgentSpec, tool: string): { decision: Decision; re
     : { decision: "allow", reason: "Tool đọc (heuristic, chưa có allowlist)" };
 }
 
-/** Prefix the Copilot runtime puts on a tool error when onPreToolUse denies the call (found at Work 2026-11-26). */
-export const DENIED_PREFIX = "Denied by preToolUse hook: ";
+export { DENIED_PREFIX } from "./hints.ts";
 
 /**
  * Extra text for the model when a call is denied: the tools it may call. The model sees this reason and fixes a
