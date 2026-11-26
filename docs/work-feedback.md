@@ -343,3 +343,69 @@ Mẫu mỗi mục:
   cho `api.githubcopilot.com/mcp/`. Chưa kiểm lời gọi tool khi token rỗng (tốn credit).
 - Đề xuất: không cần `missingConfig` cho `GITHUB_MCP_TOKEN`. Tuỳ chọn: ghi trong `docs/WORK.md` là token không bắt buộc
   khi Copilot CLI đã đăng nhập; nếu muốn chắc, Work chạy 1 brief với token rỗng và so audit code-reader.
+
+## 2026-11-26 (lần 7) — kiểm thay đổi Home (test + mock)
+- Thấy: base `d33a9a0` (= `origin/main`). `pnpm install` exit 0, `pnpm typecheck` exit 0, `pnpm test` 33/33 (~8.1s).
+- Thấy: `pnpm brief` runtime `mock` (thư mục report/log tạm, không ghi vào repo):
+  - `brief-auth`: 1 mục, 3 lỗi, 0 cảnh báo, 4.20 credits. "Không lấy được": comms-reader (EULA), board-reader
+    (`VS30063`), cloud-reader (401 + gợi ý mới `az logout` + `az login`, `az account get-access-token`). "Bị chặn" có
+    `github-list_workflow_runs`.
+  - `brief-ok`: 10 mục, 0 lỗi, 1 cảnh báo (403 workspace + gợi ý), 31.50 credits.
+  - `brief-failures`: 0 mục, 4 lỗi.
+- Thấy: console mock `brief-auth` in `✓ cloud-reader` ngay sau dòng `✗ cloud-reader: MCP server 'azure': {"status":401,...`
+  (lỗi `blocking`). Báo cáo HTML đúng (cloud-reader ở "Không lấy được"); chỉ console gây hiểu nhầm.
+- Đề xuất: `apps/cli/src/brief.ts` (dòng 41): agent có lỗi tool `blocking` (`isBlocking()`) thì không in `✓`, in ví dụ
+  `⚠ <agent> (…s): không lấy được dữ liệu`. Tuỳ chọn.
+
+## 2026-11-26 (lần 7) — brief runtime `copilot`
+- Thấy: exit 0, 75.7s (tổng lệnh 77.3s), AI Credits 34.59 / 120 (lần 6: 26.88, lần 5: 40.06), 8 mục (3 cần xử lý).
+  Báo cáo: 0 lỗi, không có "Không lấy được", 2 cảnh báo (mục dưới). board-reader 16.1s, code-reader 20.6s,
+  cloud-reader 50.5s, comms-reader 74.7s.
+- Thấy: audit 29 bản ghi, 27 `allow`, 2 `deny`, không tool ghi nào được `allow`, không `github-mcp-server-*`.
+- Thấy: tham số thật (chỉ khoá):
+  - comms-reader: `workiq-fetch` ×1, `workiq-ask` ×3.
+  - code-reader: `get_me`, `list_pull_requests`, `pull_request_read` ×2, `actions_list` ×2
+    `{method:"list_workflow_runs", owner, repo, perPage, workflow_runs_filter}`, 2 `deny` (mục dưới).
+  - board-reader: `wit_query` ×2, `wit_work_item` ×3.
+  - cloud-reader: `group_list` ×1, `group_resource_list` ×2, `azure-monitor` ×9 `{intent, command, parameters}`:
+    `monitor_workspace_list` ×1, `monitor_table_list` ×2 (2 workspace khác nhau), `monitor_workspace_log_query` ×3
+    (2 workspace, khoá `workspace, table, query, hours=24`), `monitor_activitylog_list` ×3 (3 resource, khoá
+    `resource-group, resource-name, hours=24`). 1 subscription. **Không lỗi tool, hết 401** (sau `az logout` +
+    `az login`, kiểm `az account get-access-token` ok trước khi chạy). Giống lần 5 (lần 5: log_query ×4, activitylog ×2).
+- Mock đang giả định: khớp.
+- Đề xuất: không sửa mock Azure.
+
+## 2026-11-26 (lần 7) — code-reader vẫn đoán tên tool
+- Thấy: task mới (`actions_list` + `method:"list_workflow_runs"`) bỏ được tên `github-list_workflow_runs`, nhưng model
+  đoán 2 tên khác (lần 6: 1 lần):
+  - `github-list_workflow_runs_placeholder`, args `{}`;
+  - `github-list`, args `{method:"list_workflow_runs", owner, repo, perPage, workflow_runs_filter}` (đúng args của
+    `actions_list`, sai tên tool).
+- Thấy: cả 2 bị `deny` (reason `Tool <tên> không có trong allowlist của code-reader`), model tự sửa sang
+  `github-actions_list` ×2, agent ok. code-reader 20.6s (lần 6: 20.4s), tốn ít.
+- Mock đang giả định: tên đoán sai chỉ có `github-list_workflow_runs` (`brief-auth`).
+- Đề xuất:
+  - Gate (`packages/core/src/runtime/sdk.ts` / `security.ts`, chỉ đổi **nội dung reason**, không đổi quyết định): với tool
+    không có trong allowlist, reason nêu tool đúng gần nhất hoặc danh sách tool cùng server, ví dụ
+    `Tool github-list không có. Workflow run: dùng github-actions_list với method "list_workflow_runs".` Model đọc
+    reason này (hook trả về cho model), sửa ngay ở lượt sau.
+  - Hoặc chấp nhận: gate chặn đúng, chi phí ~1 lượt model. Không cần thêm vào allowlist.
+
+## 2026-11-26 (lần 7) — `report.ts`: lời gọi bị chặn bị đếm thêm ở "Cảnh báo"
+- Thấy: với lời gọi bị `deny`, runtime thật sinh `tool.completed` có `error`:
+  `Denied by preToolUse hook: Tool <tên> không có trong allowlist của code-reader` (tiền tố do Copilot CLI thêm).
+  Lỗi này không khớp `HINTS`, nên `summarize()` đưa vào "Cảnh báo" (nhánh lỗi không khớp HINT, Home thêm lần 6).
+  Lời gọi đó đã có ở "Bị chặn" (`message` "Bị chặn: …"). Kết quả: báo cáo "2 cảnh báo" nhưng không có cảnh báo thật.
+- Thấy: console in thêm 2 dòng `✗ code-reader: Denied by preToolUse hook: …` (như lỗi tool) cạnh dòng `⛔`.
+- Mock đang giả định: `packages/core/src/runtime/mock.ts` (dòng ~53) sinh `tool.completed` `ok:false` **không có
+  `error`** khi `deny`, nên mock không tái hiện được (mock `brief-auth`: 0 cảnh báo).
+- Đề xuất:
+  - Mock trước: `mock.ts` sinh `error: "Denied by preToolUse hook: " + reason` khi `deny`, cho khớp thật.
+  - `summarize()`: bỏ lỗi bắt đầu bằng `Denied by preToolUse hook` khỏi `warnings`/`unknown` (đã có ở `blocked`).
+    Test: `brief-auth` → 0 cảnh báo, 1 dòng "Bị chặn".
+  - `apps/cli/src/brief.ts` (dòng 38): không in `✗` cho lỗi này (dòng `⛔` đã đủ).
+
+## 2026-11-26 (lần 7) — gợi ý 403 workspace
+- Thấy: HINT `InsufficientAccessError|Could not find workspace` (`report.ts`) vẫn ghi "kiểm tra `az account show`".
+  Lần 6 cho thấy `az account show` đọc cache, không phát hiện token bị thu hồi.
+- Đề xuất: đổi thành `az account get-access-token` cho khớp HINT 401 và `docs/WORK.md`. Tuỳ chọn.
