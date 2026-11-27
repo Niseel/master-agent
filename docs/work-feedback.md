@@ -566,3 +566,75 @@ Mẫu mỗi mục:
 
 ## 2026-11-26 (lần 9) — tổng credit
 - Thấy: brief 31.39 + giao việc 1.505 + QA 6.49 ≈ 39.39 AI Credits cho cả lần 9. Không có lần chạy lại.
+
+## 2026-11-26 (lần 10) — cài đặt, test, `pnpm dashboard`
+- Thấy: base `3a724d1` (= `origin/main`). `corepack pnpm typecheck` exit 0, `corepack pnpm test` 52/52.
+- Thấy: `corepack pnpm dashboard` (runtime `copilot`) chạy thẳng: build `apps/web` (`apps/web/dist` ghi mới) rồi
+  server lên `127.0.0.1:4317`. Hết lỗi `pnpm` trần của lần 9, không cần cách chạy vòng.
+- Đề xuất: không.
+
+## 2026-11-26 (lần 10) — `list-tools --writers`
+- Thấy: sinh lại `docs/mcp-tools-writers.md` (runtime `copilot`). Dòng đầu `# MCP tools`, 3 mục, đều `connected`:
+  `workiq` (comms-writer) 13 tool, `ado` (board-writer) 43, `github` (code-writer) 49. Có
+  `ado-wit_work_item_comment_write`, `ado-wit_work_item_write`, `ado-wit_work_item`. Nội dung khác `handoff-claude.md`
+  (lỗi chép nhầm của lần 9 không còn).
+- Đề xuất: không.
+
+## 2026-11-26 (lần 10) — "Check việc" từ dashboard (runtime `copilot`)
+- Thấy: 61.8s, 31.11/120 AI Credits, 5 mục, 2 cần xử lý, 0 nguồn lỗi, 0 cảnh báo, "Đã chặn" 1.
+- Thấy theo agent:
+
+  | Agent | Thời gian | Credit | Lời gọi tool |
+  |---|---|---|---|
+  | code-reader | 17.7s | 6.5 | 7 |
+  | board-reader | 23.7s | 9.6 | 8 |
+  | cloud-reader | 46.4s | 9.1 | 11 |
+  | comms-reader | 58.8s | 5.9 | 2 |
+
+- Thấy: audit 28 dòng mới, 27 `allow`, 1 `deny`, không `ask`/`reject`, không tool ghi nào được gọi. Tool:
+  - board: `ado-wit_query` ×2, `ado-wit_work_item` ×6;
+  - cloud: `azure-group_list` ×1, `azure-group_resource_list` ×2, `azure-monitor` ×8;
+  - code: `github-actions_list` ×2, `github-get_me` ×1, `github-list_pull_requests` ×1,
+    `github-pull_request_read` ×2, `github-list_workflow_runs_placeholder` ×1 (`deny`);
+  - comms: `workiq-ask` ×1, `workiq-fetch` ×1.
+- Thấy: `deny` là tên đoán `github-list_workflow_runs_placeholder` ("không có trong allowlist của code-reader"). Lần 8, 9,
+  10 đều có đúng 1 lần, code-reader tự chuyển sang `github-actions_list` dù task đã có gợi ý (`agents.ts` dòng ~166).
+- Mock đang giả định: không có lời gọi đoán tên.
+- Đề xuất: ưu tiên thấp, xem handoff-claude §3 mục 3.
+
+## 2026-11-26 (lần 10) — mục rỗng
+- Thấy: comms-reader trả 0 mục, Chi tiết có dòng "Bỏ 1 mục rỗng". Báo cáo không còn thẻ rỗng. Sửa của lần 9 đạt.
+- Đề xuất: không.
+
+## 2026-11-26 (lần 10) — giao việc board-writer: bị chặn vì không có mục để giao
+- Thấy: 2 mục cần xử lý đều nguồn Azure, cả hai hiện "Chưa có agent ghi cho nguồn này.". Báo cáo có mục Azure DevOps
+  nhưng đều `actionRequired: false`. Tab Việc cần làm (`apps/web/src/App.tsx` dòng 420) chỉ lấy mục `actionRequired`,
+  nên không có nút Giao việc nào.
+- Thấy: Work không gọi thẳng `POST /api/act` (mọi bước phải đi qua UI như người dùng). Bước giao việc và Từ chối chưa
+  kiểm được lần thứ hai (lần 9: tên tool sai; lần 10: không có mục).
+- Thấy: server không lọc `actionRequired` (`Hub.act` trong `apps/server/src/server.ts` dòng 110–121 chỉ kiểm writer,
+  schema `BriefItem`, `instruction`). Chỉ UI lọc.
+- Mock đang giả định: luôn có mục ADO `actionRequired: true` để giao.
+- Đề xuất: xem handoff-claude §3 mục 1. Tab Việc cần làm cho giao việc cả mục không `actionRequired` nếu nguồn có
+  writer.
+
+## 2026-11-26 (lần 10) — Từ chối: kết quả chưa hiện đủ trên UI (đọc code, chưa chạy thật)
+- Yêu cầu người dùng: mọi trạng thái, lý do và kết quả (kể cả Từ chối) phải xem được trên UI.
+- Thấy (đọc code):
+  - Event `approval.resolved` (`packages/core/src/events.ts` dòng 19) chỉ có `{id, decision}`, không có lý do.
+    `Approval` (`apps/web/src/state.ts` dòng 81–88) không lưu lý do, cũng không lưu giờ xử lý.
+  - Mục "Đã xử lý" ở tab Duyệt (`App.tsx` dòng 365–371) chỉ hiện `✗ Từ chối: <agent> → <tool>`. Không có lý do,
+    tham số hay giờ.
+  - Kết quả writer ở tab Việc cần làm (`App.tsx` dòng 471) chỉ hiện khi `snap.mode === "act"` và `open === i`, tức là
+    form của mục đó đang mở. Đóng form là mất. Chỉ hiện `action.summary`, không hiện trạng thái (đang soạn, chờ duyệt,
+    lỗi).
+  - Gate (`packages/core/src/runtime/sdk.ts` dòng 176–200) đã ghi audit `ask` rồi `reject` với `reason` = lý do, và trả
+    `deny` cho model. UI không có chỗ xem. Không có dòng nào nói rõ "không có gì được gửi".
+- Mock đang giả định: như SDK (`mock.ts` dòng 59–67), cũng không đưa lý do vào event.
+- Đề xuất: xem handoff-claude §3 mục 2.
+
+## 2026-11-26 (lần 10) — nghiệm thu (QA)
+- Thấy: chưa chạy lần này (dừng sau bước giao việc bị chặn). Chuyển sang lần 11.
+
+## 2026-11-26 (lần 10) — tổng credit
+- Thấy: chỉ có check việc, 31.11 AI Credits. Không giao việc, không QA.
