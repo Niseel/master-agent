@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { readerAgents, writerAgents, writerTask } from "../src/agents.ts";
 import { AgentResult } from "../src/brief.ts";
 import { loadConfig } from "../src/config.ts";
 import type { HubEvent } from "../src/events.ts";
-import { hint, isBlocking, renderReport, summarize } from "../src/report.ts";
+import { hint, isBlocking, renderReport, saveReport, summarize } from "../src/report.ts";
 import { MockRuntime } from "../src/runtime/mock.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -195,4 +196,29 @@ test("summarize: a tool error that matches no hint is a warning, unless the agen
   ]);
   assert.deepEqual(s.warnings, ["code-reader: upstream connect error (mock)", `code-reader: ${"x".repeat(300)}…`]);
   assert.deepEqual(s.failures, { "board-reader": "Timeout" });
+});
+
+test("có gì mới: items not in the last earlier brief (same runtime) are marked; no earlier brief marks nothing", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "agenthub-new-"));
+  const before = process.env.AGENTHUB_REPORT_DIR;
+  process.env.AGENTHUB_REPORT_DIR = dir;
+  const cfg = { root, runtime: "mock" as const, maxAiCredits: 120 };
+  const item = (title: string, link: string | null = null) =>
+    ({ source: "ado", title, summary: "s", priority: "medium", actionRequired: false, suggestedAction: null, link, timestamp: null }) as const;
+  const result = (items: ReturnType<typeof item>[]): HubEvent[] => [{ type: "agent.result", agent: "board-reader", items: [...items] }];
+  try {
+    const day1 = saveReport(cfg, result([item("A", "https://x/1"), item("B")]), 1, new Date("2026-11-25T08:00:00Z"));
+    assert.equal(day1.report.previousDate, undefined);
+    assert.ok(existsSync(path.join(dir, "brief-2026-11-25-mock.json")));
+    saveReport({ ...cfg, runtime: "byok" }, result([]), 1, new Date("2026-11-26T08:00:00Z")); // other runtime: ignored
+    // Same link, new title = same item; same day rerun compares with the day before, not with itself.
+    for (let k = 0; k < 2; k++) {
+      const day2 = saveReport(cfg, result([item("A (sửa)", "https://x/1"), item("B"), item("C")]), 1, new Date("2026-11-27T08:00:00Z"));
+      assert.equal(day2.report.previousDate, "2026-11-25");
+      assert.deepEqual(day2.report.isNew, [false, false, true]);
+      assert.match(readFileSync(day2.file, "utf8"), /1 mới so với 2026-11-25[\s\S]*<span class="badge new">Mới<\/span>/);
+    }
+  } finally {
+    process.env.AGENTHUB_REPORT_DIR = before;
+  }
 });

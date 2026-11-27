@@ -124,8 +124,18 @@ test("server: act runs one writer on a brief item, after the brief; bad input is
     for (let i = 0; i < 200 && !hub.events.slice(before).some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
     const req = hub.events.slice(before).find((e) => e.type === "approval.requested") as Extract<HubEvent, { type: "approval.requested" }>;
     assert.equal(req.tool, "workiq-create_entity");
+    assert.deepEqual(hub.acts["comms-writer"], item, "the dashboard knows which item the writer acts on");
     assert.equal((await post(`/api/approvals/${req.id}`, { decision: "approve" })).status, 200);
     await done;
+
+    // A rejection carries the user's reason to the dashboard.
+    const before2 = hub.events.length;
+    const second = await hub.act("comms-writer", item, "Trả lời lần 2");
+    for (let i = 0; i < 200 && !hub.events.slice(before2).some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
+    const req2 = hub.events.slice(before2).find((e) => e.type === "approval.requested") as { id: string };
+    assert.equal((await post(`/api/approvals/${req2.id}`, { decision: "reject", feedback: "x" })).status, 200);
+    await second.done;
+    assert.ok(hub.events.slice(before2).some((e) => e.type === "approval.resolved" && e.decision === "reject" && e.feedback === "x"));
     assert.equal(hub.mode, "act");
     assert.ok(hub.events.length > before && hub.events[0].type === "agent.started", "brief events kept, act appended");
     assert.ok(hub.events.some((e) => e.type === "action.result" && e.link));
@@ -156,6 +166,25 @@ test("server: qa run saves its report in its own dir; files served only from the
     for (const bad of [`/qa/${qa.dir}/..%2F..%2Fpackage.json`, "/qa/..%2F/x", "/qa/brief/index.html", `/qa/${qa.dir}/nope.png`]) {
       assert.equal((await fetch(base + bad)).status, 404, bad);
     }
+  } finally {
+    server.close();
+  }
+});
+
+test("server: acceptance criteria from a work item (ac-reader, read-only) for the qa form", async () => {
+  const { hub, server, post } = await start("brief-ok");
+  try {
+    for (const bad of [0, -1, 1.5, "12"]) assert.equal((await post("/api/qa/criteria", { workItem: bad })).status, 400, String(bad));
+    const ac = hub.agents.find((a) => a.name === "ac-reader")!;
+    assert.deepEqual(ac.readTools, ["ado-wit_work_item"]);
+    assert.equal(ac.kind, "reader");
+    const { done } = await hub.startCriteria(1234);
+    await done;
+    assert.equal(hub.mode, "ac");
+    assert.equal(hub.ac?.workItem, 1234);
+    assert.equal(hub.ac?.criteria.length, 3);
+    assert.equal(hub.report, null, "no brief report from it");
+    assert.equal(hub.state().agents.find((a) => a.name === "ac-reader")?.output, "criteria", "the meter adds it on top of the brief");
   } finally {
     server.close();
   }

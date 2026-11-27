@@ -175,3 +175,22 @@ ul.calls, ul.messages, ul.approvals, ul.auth-list { list-style: none; padding: 0
 .chip.qa-pass { color: var(--ok); }
 .chip.qa-fail { color: var(--fail); }
 .chip.qa-blocked { color: var(--warn); }
+
+/* Work run 10: outcomes and decisions stay visible */
+.outcome { border-radius: 6px; padding: 6px 8px; font-size: 13px; background: var(--bg); }
+.outcome.waiting { background: var(--act-bg); }
+.outcome.failed { background: var(--fail-bg); }
+.outcome.nothing-sent { background: var(--warn-bg); }
+.outcome.sent { border-left: 3px solid var(--ok); }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.todo-other { margin-top: 12px; }
+.todo-other summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.approval-done { border: 1px solid var(--line); border-left: 4px solid var(--idle); border-radius: 8px; padding: 8px 10px; display: grid; gap: 4px; font-size: 13px; }
+.approval-done.approve { border-left-color: var(--ok); }
+.approval-done.reject { border-left-color: var(--fail); }
+.approval-done .reason { font-weight: 500; }
+.approval-done pre { margin: 4px 0 0; max-height: 160px; overflow: auto; background: var(--bg); padding: 6px; border-radius: 4px; font-size: 12px; }
+.approvals.done { display: grid; gap: 8px; list-style: none; padding: 0; }
+.chip.new { color: var(--accent); border-color: var(--accent); }
+.ac-form input[type=number] { width: 140px; }
+.outcome ol { margin: 6px 0 0; padding-left: 20px; }

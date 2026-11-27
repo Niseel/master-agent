@@ -17,6 +17,7 @@ async function post(path: string, body: unknown) {
 
 export const run = (prompt: string) => post("/api/run", { prompt });
 export const actOn = (agent: string, item: BriefItem, instruction: string) => post("/api/act", { agent, item, instruction });
+export const readCriteria = (workItem: number) => post("/api/qa/criteria", { workItem });
 export const startQa = (url: string, criteria: string) => post("/api/qa", { url, criteria });
 export const stop = () => post("/api/stop", {});
 export const decide = (id: string, decision: "approve" | "reject", feedback?: string) =>
@@ -27,7 +28,7 @@ export const auth = async (): Promise<AuthStatus[]> => (await fetch("/api/auth")
 export function subscribe(on: {
   state: (s: Snapshot) => void;
   hub: (e: Timed) => void;
-  run: (r: { status: RunStatus; mode: RunMode; prompt?: string; report?: ReportSummary | null; qa?: QaSummary | null }) => void;
+  run: (r: { status: RunStatus; mode: RunMode; prompt?: string; report?: ReportSummary | null; qa?: QaSummary | null; acts?: Snapshot["acts"]; ac?: Snapshot["ac"] }) => void;
   connection: (ok: boolean) => void;
 }) {
   const es = new EventSource("/api/events");

@@ -1,0 +1,6 @@
+{"event":{"type":"agent.started","agent":"ac-reader","at":"2026-11-23T09:00:00Z"}}
+{"delayMs":150,"event":{"type":"tool.started","agent":"ac-reader","server":"ado","tool":"wit_work_item","callId":"a1","args":{"action":"get","id":1234,"project":"Orders"}}}
+{"delayMs":200,"event":{"type":"tool.completed","callId":"a1","ok":true}}
+{"delayMs":50,"event":{"type":"criteria.result","agent":"ac-reader","title":"Hoàn tiền một phần","criteria":["Trang đơn hàng có nút \"Hoàn tiền một phần\" với đơn đã thanh toán","Nhập số tiền lớn hơn số đã thanh toán thì báo lỗi, không cho gửi","Hoàn tiền từ 2 triệu trở lên hiện nhãn \"Chờ kế toán duyệt\""]}}
+{"delayMs":50,"event":{"type":"usage","agent":"ac-reader","usedAiCredits":1.9,"maxAiCredits":30}}
+{"event":{"type":"agent.completed","agent":"ac-reader","durationMs":600,"tokens":1400}}

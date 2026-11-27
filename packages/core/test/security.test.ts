@@ -88,13 +88,22 @@ test("writer: listed write tools need approval, listed reads pass, anything else
     for (const a of writerAgents(cfg)) {
       assert.equal(a.kind, "writer");
       assert.ok(Array.isArray(a.readTools) && a.writeTools?.length, `${a.name} has explicit lists`);
-      for (const t of a.writeTools!) assert.equal(decide(a, t).decision, "ask", `${a.name} ${t}`);
+      for (const t of a.writeTools!) assert.equal(decide(a, t, { action: a.allowedActions?.[t]?.[0] }).decision, "ask", `${a.name} ${t}`);
       for (const t of a.readTools as string[]) assert.equal(looksLikeWrite(t), false, `${a.name} read list holds a write: ${t}`);
       const fn = { comms: ["retrieve", "ask", "fetch"], board: ["wit_query", "search_workitem"], code: ["get_file_contents", "pull_request_read"] };
       const own = Object.keys(a.mcpServers)[0];
       for (const t of fn[a.name.split("-")[0] as keyof typeof fn]) assert.equal(decide(a, `${own}-${t}`).decision, "deny", `${a.name} reads no content: ${t}`);
     }
   }
+  // Grouped ADO write tools: only the listed `action` values reach the approval queue.
+  const boardMock = writerAgents({ ...(await loadConfig(root)), runtime: "mock" }).find((a) => a.name === "board-writer")!;
+  const act = (tool: string, action?: unknown) => decide(boardMock, `ado-${tool}`, action === undefined ? {} : { action }).decision;
+  assert.equal(act("wit_work_item_comment_write", "add"), "ask");
+  assert.equal(act("wit_work_item_comment_write", "update"), "ask");
+  assert.equal(act("wit_work_item_write", "update"), "ask");
+  assert.equal(act("wit_work_item_write", "create"), "deny", "board-writer never creates work items");
+  assert.equal(act("wit_work_item_write"), "deny", "no action, no call");
+  assert.equal(act("wit_work_item_comment_write", ["add"]), "deny", "action must be a plain string");
   // Built-in tools (shell, git, gh, curl) are not MCP tools of the writer's own server: always denied.
   const board = writerAgents({ ...(await loadConfig(root)), runtime: "mock" }).find((a) => a.name === "board-writer")!;
   for (const t of ["bash", "shell", "git", "gh", "curl", "github-mcp-server-create_issue"]) assert.equal(decide(board, t).decision, "deny", t);

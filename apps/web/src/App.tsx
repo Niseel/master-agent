@@ -3,7 +3,7 @@ import { hint } from "@agenthub/core/hints";
 import * as api from "./api.ts";
 import { Graph, SERVER_LABEL, STATUS_LABEL, type Selection } from "./Graph.tsx";
 import type { BriefItem } from "@agenthub/core/brief";
-import { derive, pending, type Approval, type Call, type Snapshot, type View } from "./state.ts";
+import { derive, outcomeText, pending, sameItem, todoGroups, writerOutcome, type Approval, type Call, type Snapshot, type View, type WriterOutcome } from "./state.ts";
 
 const secs = (ms?: number) => (ms === undefined ? "–" : `${(ms / 1000).toFixed(1)}s`);
 const AUTH_LABEL = { ok: "Đã đăng nhập", error: "Lỗi", mock: "Giả lập", unknown: "Chưa rõ" } as const;
@@ -29,7 +29,7 @@ export function App() {
         run: (r) => {
           // An act run (one writer) appends to the brief: keep its events and report.
           const fresh = r.status === "running" && r.mode === "brief";
-          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), qa: r.qa ?? s.qa, events: fresh ? [] : s.events });
+          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), qa: r.qa ?? s.qa, acts: r.acts ?? s.acts, ac: r.ac ?? s.ac, events: fresh ? [] : s.events });
           if (r.report) setReportKey(Date.now());
         },
         connection: setConnected,
@@ -167,12 +167,14 @@ export function App() {
                     setSelection({ kind: "agent", name: agent });
                   })
                 }
+                onShowApprovals={() => setTab("approvals")}
               />
             )}
             {tab === "qa" && (
               <Qa
                 snap={snap}
                 running={running}
+                onReadCriteria={(id) => act(() => api.readCriteria(id))}
                 onRun={(url, criteria) =>
                   act(async () => {
                     await api.startQa(url, criteria);
@@ -193,7 +195,7 @@ export function App() {
             <div className="report-head">
               <b>Báo cáo</b>
               <span>
-                {snap.report.items.length} mục · {Object.keys(snap.report.failures).length} nguồn lỗi · {snap.report.warnings?.length ?? 0} cảnh báo ·{" "}
+                {snap.report.items.length} mục{snap.report.previousDate ? ` (${snap.report.isNew?.filter(Boolean).length ?? 0} mới so với ${snap.report.previousDate})` : ""} · {Object.keys(snap.report.failures).length} nguồn lỗi · {snap.report.warnings?.length ?? 0} cảnh báo ·{" "}
                 {snap.report.usedAiCredits.toFixed(2)} credits · {secs(snap.report.durationMs)}
                 {snap.status === "stopped" ? " · đã dừng giữa chừng" : ""}
               </span>
@@ -303,6 +305,11 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
           {av.hint && <div className="hint">→ {av.hint}</div>}
         </div>
       )}
+      {info.kind === "writer" && outcomeText(writerOutcome(view, info.name)) && (
+        <div className="action-result">
+          <b>Lượt gần nhất:</b> {outcomeText(writerOutcome(view, info.name))}
+        </div>
+      )}
       {av.action && (
         <div className="action-result">
           <b>Kết quả:</b> {av.action.summary}{" "}
@@ -363,10 +370,21 @@ function Approvals({ view, onDecide }: { view: View; onDecide: (id: string, d: "
       {done.length > 0 && (
         <>
           <h4>Đã xử lý</h4>
-          <ul className="messages">
-            {done.map((a) => (
-              <li key={a.id}>
-                {a.decision === "approve" ? "✓ Duyệt" : "✗ Từ chối"}: {a.agent} → <code>{a.tool}</code>
+          <ul className="approvals done">
+            {[...done].reverse().map((a, k) => (
+              <li key={`${a.id}-${k}`} className={`approval-done ${a.decision}`}>
+                <div className="row">
+                  <b>{a.decision === "approve" ? "✓ Đã duyệt" : "✗ Đã từ chối"}</b>
+                  <span className="muted">{clock(a.resolvedAt)}</span>
+                </div>
+                <div>
+                  {a.agent} → <code>{a.tool}</code>
+                </div>
+                {a.feedback && <div className="reason">Lý do: {a.feedback}</div>}
+                <details>
+                  <summary>Tham số</summary>
+                  <pre>{JSON.stringify(a.args, null, 2)}</pre>
+                </details>
               </li>
             ))}
           </ul>
@@ -413,66 +431,139 @@ function AuthPanel({ auth, view, snap, busy, onCheck }: { auth: api.AuthStatus[]
 
 const SOURCE_LABEL: Record<BriefItem["source"], string> = { outlook: "Outlook", teams: "Teams", ado: "Azure DevOps", github: "GitHub", azure: "Azure" };
 
-/** Brief items that need the user, each can be handed to the writer for its source (Phase 3). */
-function Todo({ snap, view, running, onAct }: { snap: Snapshot; view: View; running: boolean; onAct: (agent: string, item: BriefItem, instruction: string) => void }) {
+const clock = (ms?: number) => (ms === undefined ? "" : new Date(ms).toLocaleTimeString("vi-VN", { hour12: false }));
+
+/** Where a writer's last run stands, shown on its item whether the form is open or not (Work run 10). */
+function Outcome({ o, onShowApprovals }: { o: WriterOutcome; onShowApprovals: () => void }) {
+  if (o.kind === "idle") return null;
+  const reasons = (list: Approval[]) => [...new Set(list.map((a) => a.feedback).filter(Boolean))].join("; ");
+  return (
+    <div className={`outcome ${o.kind}`} role="status">
+      {o.kind === "running" && <>Đang soạn…</>}
+      {o.kind === "waiting" && (
+        <>
+          Chờ bạn duyệt {o.pending} yêu cầu.{" "}
+          <button type="button" className="link" onClick={onShowApprovals}>
+            Mở tab Duyệt
+          </button>
+        </>
+      )}
+      {o.kind === "failed" && (
+        <>
+          <b>Lỗi, không gửi gì:</b> {o.error}
+          {o.hint && <div className="hint">→ {o.hint}</div>}
+        </>
+      )}
+      {o.kind === "nothing-sent" && (
+        <>
+          <b>Không có gì được gửi</b>
+          {o.rejected.length > 0 && (
+            <>
+              {" "}
+              (bạn đã từ chối {o.rejected.length} yêu cầu{reasons(o.rejected) ? `: ${reasons(o.rejected)}` : ""})
+            </>
+          )}
+          .
+        </>
+      )}
+      {o.kind === "sent" && (
+        <>
+          <b>Đã gửi:</b> {o.sent.map((a) => a.tool).join(", ")}
+          {o.rejected.length > 0 && <> · từ chối {o.rejected.length}</>}
+          {o.summary && <div>{o.summary}</div>}
+          {o.link && /^https?:\/\//.test(o.link) && (
+            <a href={o.link} target="_blank" rel="noopener noreferrer">
+              Mở ↗
+            </a>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Brief items that can be handed to the writer for their source (Phase 3). */
+function Todo({
+  snap,
+  view,
+  running,
+  onAct,
+  onShowApprovals,
+}: {
+  snap: Snapshot;
+  view: View;
+  running: boolean;
+  onAct: (agent: string, item: BriefItem, instruction: string) => void;
+  onShowApprovals: () => void;
+}) {
   const [open, setOpen] = useState<number | null>(null);
   const [instruction, setInstruction] = useState("");
-  const items = (snap.report?.items ?? []).map((item, i) => ({ item, i })).filter(({ item }) => item.actionRequired);
   if (!snap.report) return <p className="muted detail">Chạy check việc trước: các mục cần bạn xử lý hiện ở đây.</p>;
+  const groups = todoGroups(snap.report.items, snap.writerFor);
+
+  const row = ({ item, i }: { item: BriefItem; i: number }) => {
+    const writer = snap.agents.find((a) => a.name === snap.writerFor[item.source]);
+    const acted = writer && snap.acts[writer.name] && sameItem(snap.acts[writer.name], item);
+    return (
+      <li key={i} className={`todo-item ${item.priority}`}>
+        <div className="row">
+          <span className="chip">{SOURCE_LABEL[item.source]}</span>
+          {snap.report?.isNew?.[i] && <span className="chip new" title={`Không có trong check việc ${snap.report.previousDate}`}>Mới</span>}
+          <b>{item.title}</b>
+        </div>
+        <div className="muted">{item.summary}</div>
+        {item.suggestedAction && <div className="hint">Gợi ý: {item.suggestedAction}</div>}
+        {!writer ? (
+          <div className="muted">Chưa có agent ghi cho nguồn này.</div>
+        ) : open === i ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (instruction.trim()) onAct(writer.name, item, instruction.trim());
+            }}
+          >
+            <label>
+              Việc giao cho {writer.displayName} (<code>{writer.name}</code>)
+              <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={2000} autoFocus />
+            </label>
+            <div className="row">
+              <button type="submit" className="primary" disabled={running || !instruction.trim()}>
+                Soạn ▶
+              </button>
+              <button type="button" onClick={() => setOpen(null)}>
+                Đóng
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            disabled={running}
+            onClick={() => {
+              setOpen(i);
+              setInstruction(item.suggestedAction ?? "");
+            }}
+          >
+            {acted ? "Giao lại" : "Giao việc"}: {writer.displayName}
+          </button>
+        )}
+        {acted && <Outcome o={writerOutcome(view, writer.name)} onShowApprovals={onShowApprovals} />}
+      </li>
+    );
+  };
+
   return (
     <div className="detail">
       <p className="muted">Giao một mục cho agent ghi. Agent soạn nội dung, rồi chờ bạn duyệt ở tab Duyệt trước khi gửi.</p>
-      {items.length === 0 && <p>Không có mục nào cần xử lý.</p>}
-      <ul className="todo">
-        {items.map(({ item, i }) => {
-          const writer = snap.agents.find((a) => a.name === snap.writerFor[item.source]);
-          const result = writer && view.agents[writer.name];
-          return (
-            <li key={i} className={`todo-item ${item.priority}`}>
-              <div className="row">
-                <span className="chip">{SOURCE_LABEL[item.source]}</span>
-                <b>{item.title}</b>
-              </div>
-              <div className="muted">{item.summary}</div>
-              {item.suggestedAction && <div className="hint">Gợi ý: {item.suggestedAction}</div>}
-              {!writer ? (
-                <div className="muted">Chưa có agent ghi cho nguồn này.</div>
-              ) : open === i ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (instruction.trim()) onAct(writer.name, item, instruction.trim());
-                  }}
-                >
-                  <label>
-                    Việc giao cho {writer.displayName} (<code>{writer.name}</code>)
-                    <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={2000} autoFocus />
-                  </label>
-                  <div className="row">
-                    <button type="submit" className="primary" disabled={running || !instruction.trim()}>
-                      Soạn ▶
-                    </button>
-                    <button type="button" onClick={() => setOpen(null)}>
-                      Huỷ
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <button
-                  disabled={running}
-                  onClick={() => {
-                    setOpen(i);
-                    setInstruction(item.suggestedAction ?? "");
-                  }}
-                >
-                  Giao việc: {writer.displayName}
-                </button>
-              )}
-              {result?.action && snap.mode === "act" && open === i && <div className="action-result">{result.action.summary}</div>}
-            </li>
-          );
-        })}
-      </ul>
+      <h4>Cần bạn xử lý ({groups.action.length})</h4>
+      {groups.action.length === 0 && <p>Không có mục nào cần xử lý.</p>}
+      <ul className="todo">{groups.action.map(row)}</ul>
+      {groups.other.length > 0 && (
+        // Open by default when one of its items was handed to a writer, so the outcome stays in view.
+        <details className="todo-other" open={groups.other.some(({ item }) => Object.values(snap.acts).some((x) => sameItem(x, item))) || undefined}>
+          <summary>Mục khác có agent ghi ({groups.other.length})</summary>
+          <ul className="todo">{groups.other.map(row)}</ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -481,9 +572,21 @@ const QA_STATUS = { pass: "Đạt", fail: "Không đạt", blocked: "Không ki�
 const QA_SAMPLE = "Mục \"Cần bạn xử lý\" nằm đầu báo cáo\nLink trong báo cáo mở tab mới\nFooter ghi số AI Credits đã dùng";
 
 /** Phase 4: acceptance test of one page with Playwright; the report (screenshots, video, trace) opens from /qa/<dir>/. */
-function Qa({ snap, running, onRun }: { snap: Snapshot; running: boolean; onRun: (url: string, criteria: string) => void }) {
+function Qa({
+  snap,
+  running,
+  onRun,
+  onReadCriteria,
+}: {
+  snap: Snapshot;
+  running: boolean;
+  onRun: (url: string, criteria: string) => void;
+  onReadCriteria: (workItem: number) => void;
+}) {
   const [url, setUrl] = useState(() => `${location.origin}/report`);
   const [criteria, setCriteria] = useState(QA_SAMPLE);
+  const [workItem, setWorkItem] = useState("");
+  const ac = snap.ac;
   const qa = snap.qa;
   const rows = qa ? qa.criteria.map((c, i) => qa.result?.criteria[i] ?? { criterion: c, status: "blocked" as const, evidence: qa.error ?? "Không có kết quả" }) : [];
   return (
@@ -492,6 +595,45 @@ function Qa({ snap, running, onRun }: { snap: Snapshot; running: boolean; onRun:
         Agent mở trang bằng Playwright (headless), kiểm từng tiêu chí, quay video, chụp ảnh, lưu trace. Chỉ mở được đúng origin của URL này; không chạy JS
         tuỳ ý, không tải file lên.
       </p>
+      <form
+        className="qa-form ac-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (Number(workItem) > 0) onReadCriteria(Number(workItem));
+        }}
+      >
+        <label>
+          Lấy tiêu chí từ work item ADO (đọc trường Acceptance Criteria, chỉ đọc)
+          <div className="row">
+            <input type="number" min={1} step={1} placeholder="Số work item" value={workItem} onChange={(e) => setWorkItem(e.target.value)} />
+            <button type="submit" disabled={running || !(Number(workItem) > 0)}>
+              Lấy tiêu chí
+            </button>
+          </div>
+        </label>
+        {ac && (
+          <div className={`outcome ${ac.error ? "failed" : "sent"}`}>
+            {ac.error ? (
+              <>
+                <b>Không lấy được tiêu chí #{ac.workItem}:</b> {ac.error}
+              </>
+            ) : (
+              <>
+                <b>
+                  #{ac.workItem} {ac.title}
+                </b>
+                : {ac.criteria.length} tiêu chí{" "}
+                {ac.criteria.length > 0 && (
+                  <button type="button" className="link" onClick={() => setCriteria(ac.criteria.join("\n"))}>
+                    Dùng các tiêu chí này
+                  </button>
+                )}
+                <ol>{ac.criteria.map((c, k) => <li key={k}>{c}</li>)}</ol>
+              </>
+            )}
+          </div>
+        )}
+      </form>
       <form
         className="qa-form"
         onSubmit={(e) => {

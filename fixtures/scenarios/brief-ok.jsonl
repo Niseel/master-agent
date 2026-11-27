@@ -24,6 +24,9 @@
 {"event":{"type":"agent.completed","agent":"comms-reader","durationMs":1400,"tokens":5200}}
 {"delayMs":50,"event":{"type":"agent.result","agent":"board-reader","items":[{"source":"ado","title":"#1234 Hoàn tiền một phần → Active","summary":"PO chuyển sang Active, thêm 2 acceptance criteria mới.","priority":"medium","actionRequired":false,"suggestedAction":null,"link":"https://dev.azure.com/org/proj/_workitems/edit/1234","timestamp":"2026-11-22T16:00:00Z"}]}}
 {"event":{"type":"agent.completed","agent":"board-reader","durationMs":1500,"tokens":3100}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"builtin","tool":"github-list_workflow_runs_placeholder","callId":"c20"}}
+{"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"github","tool":"actions_list","callId":"c21","args":{"method":"list_workflow_runs"}}}
+{"delayMs":50,"event":{"type":"tool.completed","callId":"c21","ok":true}}
 {"delayMs":50,"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway — 3 file, +120/-40.","priority":"medium","actionRequired":true,"suggestedAction":"Review","link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:28:00Z"},{"source":"github","title":"Workflow CI fail trên main","summary":"Job test-integration fail 2 lần liên tiếp.","priority":"high","actionRequired":true,"suggestedAction":"Xem log job","link":"https://github.com/me/orders/actions/runs/1","timestamp":"2026-11-23T02:10:00Z"}]}}
 {"event":{"type":"agent.completed","agent":"code-reader","durationMs":1600,"tokens":4000}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"c9"}}

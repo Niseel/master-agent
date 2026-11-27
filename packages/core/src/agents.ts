@@ -29,6 +29,13 @@ export interface AgentSpec {
   readTools: string[] | "*";
   /** Writers only: runtime tool names that always go to the approval queue. Readers never have this. */
   writeTools?: string[];
+  /**
+   * Writers only: for grouped tools that pick the operation with an `action` arg, the only values allowed.
+   * Any other value (or none) is denied before it reaches the approval queue.
+   */
+  allowedActions?: Record<string, string[]>;
+  /** Readers only: "criteria" = return acceptance criteria of one work item (qa.ts AcResult) instead of brief items. */
+  output?: "criteria";
   /** Testers only: origins (`https://host:port`) the browser may navigate to. */
   allowedOrigins?: string[];
   model?: string;
@@ -158,7 +165,13 @@ export function readerAgents(cfg: HubConfig): AgentSpec[] {
       name: "code-reader",
       displayName: "GitHub",
       kind: "reader",
-      prompt: prompt("Bạn là agent đọc GitHub: pull request, review, pipeline."),
+      // Work runs 8–10: one guessed `list_workflow_runs_placeholder` call per run despite the task hint, so the rule
+      // also sits in the system prompt, ahead of everything else.
+      prompt: prompt(
+        "Bạn là agent đọc GitHub: pull request, review, pipeline. Chỉ gọi đúng tên tool có trong danh sách tool của bạn, " +
+          "không tự đặt tên tool. Workflow run (pipeline) = tool `actions_list` với `method: \"list_workflow_runs\"`: " +
+          "KHÔNG có tool `list_workflow_runs` hay `list_workflow_runs_placeholder`.",
+      ),
       task:
         `Với các repo: ${cfg.github.repos.join(", ") || "(mọi repo tôi tham gia)"}. ` +
         "Liệt kê (source=github): PR đang chờ tôi review, PR của tôi có comment mới, workflow run fail trong 24h. " +
@@ -273,7 +286,12 @@ export function writerAgents(cfg: HubConfig): AgentSpec[] {
       name: "board-writer",
       displayName: "Cập nhật ADO",
       kind: "writer",
-      prompt: writerPrompt("Bạn là agent cập nhật work item Azure DevOps (trạng thái, comment) thay người dùng."),
+      prompt: writerPrompt(
+        "Bạn là agent cập nhật work item Azure DevOps (trạng thái, comment) thay người dùng. Thêm comment: " +
+          "`wit_work_item_comment_write` với `action: \"add\"`. Sửa trường (trạng thái, ...): `wit_work_item_write` với " +
+          "`action: \"update\"`. Không tạo work item mới; action khác bị chặn. Xem work item trước bằng `wit_work_item` " +
+          "`action: \"get\"` nếu cần.",
+      ),
       task: "",
       mcpServers: {
         // No X-MCP-Readonly: this agent writes. Only BOARD_WRITE passes, each after approval.
@@ -283,6 +301,9 @@ export function writerAgents(cfg: HubConfig): AgentSpec[] {
       },
       readTools: BOARD_READ,
       writeTools: BOARD_WRITE,
+      // `action` values from Work run 10 (docs/mcp-tools-writers.md). board-writer comments on and updates the item the
+      // user picked; it never creates work items (`create`) or does anything else these tools offer.
+      allowedActions: { "ado-wit_work_item_comment_write": ["add", "update"], "ado-wit_work_item_write": ["update"] },
       missingConfig: real && !cfg.ado.org ? "Chưa cấu hình ADO_ORG" : real ? adoConfigDirProblem() : undefined,
     },
     {

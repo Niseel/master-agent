@@ -1,7 +1,7 @@
 /** Flow graph: orchestrator -> agents -> MCP servers. Edges animate while a tool call is in flight, red after an error. */
 import { Background, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { AgentInfo, NodeStatus, View } from "./state.ts";
+import { outcomeText, writerOutcome, type AgentInfo, type NodeStatus, type View } from "./state.ts";
 
 export const STATUS_LABEL: Record<NodeStatus, string> = {
   idle: "Chờ",
@@ -67,7 +67,9 @@ export function Graph(props: {
   const seen = new Set<string>();
   agents.forEach((a, i) => {
     const av = view.agents[a.name];
-    const meta = [av.calls.length ? `${av.calls.length} tool` : "", secs(av.durationMs), av.credits ? `${av.credits.toFixed(1)} cr` : ""].filter(Boolean).join(" · ");
+    const meta =
+      (a.kind === "writer" && outcomeText(writerOutcome(view, a.name))) ||
+      [av.calls.length ? `${av.calls.length} tool` : "", secs(av.durationMs), av.credits ? `${av.credits.toFixed(1)} cr` : ""].filter(Boolean).join(" · ");
     nodes.push({
       id: `agent:${a.name}`,
       type: "hub",

@@ -8,6 +8,7 @@
  *   POST /api/run      {prompt}   start a brief run with the reader agents (409 while one is running)
  *   POST /api/act      {agent, item, instruction}  run one writer agent on a brief item (Phase 3); its writes wait for approval
  *   POST /api/qa       {url, criteria}  acceptance test of one site with Playwright (Phase 4); criteria = one per line
+ *   POST /api/qa/criteria {workItem}  read the acceptance criteria of one ADO work item for the qa form
  *   GET  /qa/<run>/<file>         a qa run's report (index.html), screenshots, video, trace
  *   POST /api/approvals/:id {decision: "approve"|"reject", feedback?}
  *   POST /api/stop
@@ -20,7 +21,7 @@ import path from "node:path";
 import { checkAuth } from "@agenthub/core/auth";
 import { readerAgents, WRITER_FOR, writerAgents, writerTask, type AgentSpec } from "@agenthub/core/agents";
 import { BriefItem } from "@agenthub/core/brief";
-import { parseCriteria, qaAgent, qaDir, saveQaReport, type QaInput, type QaReport } from "@agenthub/core/qa";
+import { acReader, parseCriteria, qaAgent, qaDir, saveQaReport, type QaInput, type QaReport } from "@agenthub/core/qa";
 import { originOf } from "@agenthub/core/security";
 import type { HubConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
@@ -32,7 +33,7 @@ export type RunStatus = "idle" | "running" | "done" | "stopped";
  * brief: the reader agents, makes a report. act: one writer on one brief item. qa: one acceptance test.
  * act and qa are appended to the brief's events, so its graph and report stay.
  */
-export type RunMode = "brief" | "act" | "qa";
+export type RunMode = "brief" | "act" | "qa" | "ac";
 type Send = (event: "state" | "hub" | "run", data: unknown) => void;
 
 /** One run at a time. Holds the events so a browser that connects late sees the whole run. */
@@ -44,6 +45,10 @@ export class Hub {
   status: RunStatus = "idle";
   mode: RunMode = "brief";
   report: { file: string; report: BriefReport } | null = null;
+  /** Per writer: the brief item its last run acted on, so the to-do tab shows the outcome on the right item. */
+  acts: Record<string, BriefItem> = {};
+  /** Last acceptance criteria read from ADO (ac-reader), for the qa form. */
+  ac: { workItem: number; title: string; criteria: string[]; error?: string } | null = null;
   /** Last qa run: dir name under the reports dir, and its report. */
   qa: { dir: string; report: QaReport } | null = null;
   private runtime: AgentRuntime | null = null;
@@ -59,7 +64,7 @@ export class Hub {
     this.writers = writerAgents(cfg);
     // Drawn as one node; each run builds its own spec (target URL, output dir).
     const qaShape = qaAgent(cfg, { url: "http://127.0.0.1/", criteria: [] }, this.reportDir);
-    this.agents = [...this.readers, ...this.writers, qaShape];
+    this.agents = [...this.readers, ...this.writers, acReader(cfg, 0), qaShape];
   }
 
   get reportDir() {
@@ -80,14 +85,17 @@ export class Hub {
         kind: a.kind,
         servers: Object.keys(a.mcpServers),
         missingConfig: a.missingConfig ?? null,
+        ...(a.output ? { output: a.output } : {}),
       })),
       status: this.status,
       mode: this.mode,
       writerFor: WRITER_FOR,
+      acts: this.acts,
       prompt: this.prompt,
       events: this.events.map((event, i) => ({ at: this.times[i], event })),
       report: this.report && { file: this.report.file, ...this.report.report },
       qa: this.qaState(),
+      ac: this.ac,
     };
   }
 
@@ -116,6 +124,7 @@ export class Hub {
       throw new HttpError(400, "instruction phải là chuỗi 1–2000 ký tự");
     }
     const spec = { ...writer, task: writerTask(parsed.data) };
+    if (this.status !== "running") this.acts = { ...this.acts, [writer.name]: parsed.data };
     // A writer gets one session; MIN_SESSION_CREDITS in sdk.ts raises this if needed.
     return this.launch("act", instruction.trim(), { prompt: instruction.trim(), agents: [spec], budget: 30, scenario: `act-${writer.name}` });
   }
@@ -134,6 +143,18 @@ export class Hub {
     });
   }
 
+  /** Read the acceptance criteria of work item `workItem` (ac-reader, read-only). */
+  startCriteria(workItem: unknown) {
+    if (typeof workItem !== "number" || !Number.isInteger(workItem) || workItem <= 0) throw new HttpError(400, "workItem phải là số nguyên dương");
+    const spec = acReader(this.cfg, workItem);
+    if (spec.missingConfig) throw new HttpError(400, spec.missingConfig);
+    return this.launch("ac", `Lấy tiêu chí work item ${workItem}`, { prompt: "Đọc tiêu chí nghiệm thu.", agents: [spec], budget: 30, scenario: "ac-reader" }, (events) => {
+      const r = events.find((e) => e.type === "criteria.result");
+      const failed = events.find((e) => e.type === "agent.failed");
+      this.ac = r ? { workItem, title: r.title, criteria: r.criteria } : { workItem, title: "", criteria: [], error: failed?.error ?? "Không đọc được tiêu chí" };
+    });
+  }
+
   private async launch(mode: RunMode, prompt: string, input: RunInput, finish?: (events: HubEvent[], durationMs: number) => void) {
     if (this.status === "running") throw new HttpError(409, "Đang có lượt chạy");
     this.status = "running";
@@ -142,10 +163,11 @@ export class Hub {
       this.events = [];
       this.times = [];
       this.report = null;
+      this.acts = {};
     }
     this.prompt = prompt;
     this.stopping = false;
-    this.emit("run", { status: this.status, mode, prompt });
+    this.emit("run", { status: this.status, mode, prompt, acts: this.acts });
     const t0 = Date.now();
     const first = this.events.length;
     const done = (async () => {
@@ -160,7 +182,7 @@ export class Hub {
         if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0);
         finish?.(this.events.slice(first), Date.now() - t0);
         this.status = this.stopping ? "stopped" : "done";
-        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report }, qa: this.qaState() });
+        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report }, qa: this.qaState(), ac: this.ac });
       }
     })();
     return { done };
@@ -300,6 +322,11 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
       if (route === "POST /api/run") {
         const { prompt } = await readJson(req);
         await hub.start(typeof prompt === "string" && prompt.trim() ? prompt.trim() : "check việc");
+        return json(res, 202, { status: hub.status });
+      }
+      if (route === "POST /api/qa/criteria") {
+        const { workItem } = await readJson(req);
+        await hub.startCriteria(workItem);
         return json(res, 202, { status: hub.status });
       }
       if (route === "POST /api/qa") {

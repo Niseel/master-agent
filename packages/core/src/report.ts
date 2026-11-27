@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { BriefItem } from "./brief.ts";
 import type { HubConfig } from "./config.ts";
@@ -20,6 +20,30 @@ export interface BriefReport {
   usedAiCredits: number;
   maxAiCredits: number;
   durationMs: number;
+  /** Phase 5 "có gì mới": the earlier brief compared against, and per item (same order as `items`) whether it is new. */
+  previousDate?: string | null;
+  isNew?: boolean[];
+}
+
+/** Same item across days: source + link (or title when there is no link). */
+export const itemKey = (i: BriefItem) => `${i.source}|${(i.link || i.title).trim().toLowerCase()}`;
+
+/** Latest brief-<date><suffix>.json in `dir` dated before `date`, or null. */
+export function previousBrief(dir: string, suffix: string, date: string): { date: string; items: BriefItem[] } | null {
+  if (!existsSync(dir)) return null;
+  const re = new RegExp(`^brief-(\\d{4}-\\d{2}-\\d{2})${suffix.replace(/[^\w-]/g, "")}\\.json$`);
+  const dates = readdirSync(dir)
+    .map((f) => f.match(re)?.[1])
+    .filter((d): d is string => !!d && d < date)
+    .sort();
+  const last = dates.at(-1);
+  if (!last) return null;
+  try {
+    const data = JSON.parse(readFileSync(path.join(dir, `brief-${last}${suffix}.json`), "utf8"));
+    return { date: last, items: Array.isArray(data.items) ? data.items : [] };
+  } catch {
+    return null;
+  }
 }
 
 const SOURCE_LABEL: Record<BriefItem["source"], string> = {
@@ -76,21 +100,22 @@ export const esc = (s: string) =>
 /** Only http(s) links are rendered: content comes from untrusted mail/chat. */
 const safeLink = (url: string | null) => (url && /^https?:\/\//i.test(url) ? url : null);
 
-function card(i: BriefItem) {
+function card(i: BriefItem, isNew = false) {
   const link = safeLink(i.link);
   const title = link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a>` : esc(i.title);
   return `<li class="item ${i.priority}">
-  <div class="meta"><span class="badge ${i.priority}">${PRIORITY_LABEL[i.priority]}</span><span class="src">${SOURCE_LABEL[i.source]}</span>${i.timestamp ? `<time>${esc(i.timestamp)}</time>` : ""}</div>
+  <div class="meta"><span class="badge ${i.priority}">${PRIORITY_LABEL[i.priority]}</span>${isNew ? `<span class="badge new">Mới</span>` : ""}<span class="src">${SOURCE_LABEL[i.source]}</span>${i.timestamp ? `<time>${esc(i.timestamp)}</time>` : ""}</div>
   <div class="title">${title}</div>
   <p>${esc(i.summary)}</p>
   ${i.suggestedAction ? `<p class="action">→ ${esc(i.suggestedAction)}</p>` : ""}
 </li>`;
 }
 
-const list = (items: BriefItem[]) =>
-  `<ul>${[...items].sort((a, b) => RANK[a.priority] - RANK[b.priority]).map(card).join("\n")}</ul>`;
-
 export function renderReport(r: BriefReport): string {
+  const fresh = (i: BriefItem) => !!r.isNew?.[r.items.indexOf(i)];
+  const list = (items: BriefItem[]) =>
+    `<ul>${[...items].sort((a, b) => RANK[a.priority] - RANK[b.priority]).map((i) => card(i, fresh(i))).join("\n")}</ul>`;
+  const newCount = r.isNew?.filter(Boolean).length ?? 0;
   const action = r.items.filter((i) => i.actionRequired);
   const bySource = Object.keys(SOURCE_LABEL)
     .map((s) => [s, r.items.filter((i) => i.source === s && !i.actionRequired)] as const)
@@ -109,7 +134,7 @@ main{max-width:880px;margin:0 auto;padding:24px 16px 48px}h1{font-size:24px;marg
 .item{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;padding:12px 14px}
 .item.high{border-left-color:var(--high)}.item.medium{border-left-color:var(--medium)}
 .meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);flex-wrap:wrap}
-.badge{padding:1px 8px;border-radius:99px;font-weight:600}.badge.high{color:var(--high);background:var(--high-bg)}.badge.medium{color:var(--medium);background:var(--medium-bg)}.badge.low{color:var(--low);background:var(--low-bg)}
+.badge{padding:1px 8px;border-radius:99px;font-weight:600}.badge.new{color:var(--accent);background:var(--card);border:1px solid var(--accent)}.badge.high{color:var(--high);background:var(--high-bg)}.badge.medium{color:var(--medium);background:var(--medium-bg)}.badge.low{color:var(--low);background:var(--low-bg)}
 .title{font-weight:600;margin-top:4px}.title a{color:var(--accent);text-decoration:none}.title a:hover{text-decoration:underline}
 p{margin:4px 0 0}.action{font-weight:500}
 .fail{background:var(--fail-bg);color:var(--fail);border-radius:8px;padding:10px 14px}
@@ -117,7 +142,7 @@ p{margin:4px 0 0}.action{font-weight:500}
 footer{margin-top:32px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
 </style></head><body><main>
 <h1>Check việc — ${esc(r.date)}</h1>
-<p class="sub">${r.items.length} mục · ${action.length} cần bạn xử lý${failures.length ? ` · ${failures.length} nguồn lỗi` : ""}${r.warnings?.length ? ` · ${r.warnings.length} cảnh báo` : ""}</p>
+<p class="sub">${r.items.length} mục · ${action.length} cần bạn xử lý${r.previousDate ? ` · ${newCount} mới so với ${esc(r.previousDate)}` : ""}${failures.length ? ` · ${failures.length} nguồn lỗi` : ""}${r.warnings?.length ? ` · ${r.warnings.length} cảnh báo` : ""}</p>
 ${failures.length ? `<h2>Không lấy được</h2><ul>${failures.map(([a, e]) => `<li class="fail"><b>${esc(a)}</b>: ${esc(e)}${hint(e) ? `<p class="action">→ ${esc(hint(e)!)}</p>` : ""}</li>`).join("")}</ul>` : ""}
 ${r.warnings?.length ? `<h2>Cảnh báo</h2><ul>${r.warnings.map((w) => `<li class="warn">${esc(w)}${hint(w) ? `<p class="action">→ ${esc(hint(w)!)}</p>` : ""}</li>`).join("")}</ul>` : ""}
 ${action.length ? `<h2>Cần bạn xử lý</h2>${list(action)}` : ""}
@@ -132,11 +157,21 @@ ${r.blocked?.length ? `<h2>Đã chặn</h2><ul>${r.blocked.map((b) => `<li class
  * Build the report from a run's events and write <AGENTHUB_REPORT_DIR or root/reports>/brief-YYYY-MM-DD.html.
  * mock/byok runs get a suffix (brief-YYYY-MM-DD-mock.html), so trying the mock at Work never overwrites the real report.
  */
-export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredits">, events: HubEvent[], durationMs: number) {
-  const date = new Date().toISOString().slice(0, 10);
+export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredits">, events: HubEvent[], durationMs: number, now = new Date()) {
+  const date = now.toISOString().slice(0, 10);
+  const dir = process.env.AGENTHUB_REPORT_DIR || path.join(cfg.root, "reports");
+  const suffix = cfg.runtime === "copilot" ? "" : `-${cfg.runtime}`;
   const report: BriefReport = { date, runtime: cfg.runtime, ...summarize(events), maxAiCredits: cfg.maxAiCredits, durationMs };
-  const file = path.join(process.env.AGENTHUB_REPORT_DIR || path.join(cfg.root, "reports"), `brief-${date}${cfg.runtime === "copilot" ? "" : `-${cfg.runtime}`}.html`);
-  mkdirSync(path.dirname(file), { recursive: true });
+  // "Có gì mới": compare with the last earlier day's brief (same runtime). No earlier brief = nothing marked.
+  const prev = previousBrief(dir, suffix, date);
+  if (prev) {
+    const seen = new Set(prev.items.map(itemKey));
+    Object.assign(report, { previousDate: prev.date, isNew: report.items.map((i) => !seen.has(itemKey(i))) });
+  }
+  const file = path.join(dir, `brief-${date}${suffix}.html`);
+  mkdirSync(dir, { recursive: true });
   writeFileSync(file, renderReport(report));
+  // Items only (no failures/warnings): what the next day compares against. Stays local (reports/ is gitignored).
+  writeFileSync(path.join(dir, `brief-${date}${suffix}.json`), JSON.stringify({ date, runtime: cfg.runtime, items: report.items }, null, 2));
   return { report, file };
 }

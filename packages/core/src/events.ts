@@ -10,13 +10,16 @@ export type HubEvent =
   | { type: "agent.result"; agent: string; items: BriefItem[] }
   /** Writer agents (Phase 3): what was done, or why not. */
   | { type: "action.result"; agent: string; summary: string; link: string | null }
+  /** ac-reader (Phase 4): acceptance criteria of one work item. */
+  | { type: "criteria.result"; agent: string; title: string; criteria: string[] }
   /** The qa agent (Phase 4): pass/fail per acceptance criterion. */
   | { type: "qa.result"; agent: string; result: QaResult }
   /** `args` is set by the mock runtime only (scenario files); the SDK runtime shows args on approval.requested. */
   | { type: "tool.started"; agent: string; server: string; tool: string; callId: string; args?: unknown }
   | { type: "tool.completed"; callId: string; ok: boolean; error?: string }
   | { type: "approval.requested"; id: string; agent: string; tool: string; args: unknown }
-  | { type: "approval.resolved"; id: string; decision: "approve" | "reject" }
+  /** `feedback`: the reason the user typed (or the UI default on reject), shown on the dashboard. */
+  | { type: "approval.resolved"; id: string; decision: "approve" | "reject"; feedback?: string }
   | { type: "usage"; agent?: string; usedAiCredits: number; maxAiCredits: number }
   | { type: "message"; agent: string; text: string };
 

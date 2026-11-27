@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { npx, only, UNTRUSTED_RULE, type AgentSpec } from "./agents.ts";
+import { npx, only, readerAgents, UNTRUSTED_RULE, type AgentSpec } from "./agents.ts";
 import type { HubConfig } from "./config.ts";
 import type { HubEvent } from "./events.ts";
 import { esc } from "./report.ts";
@@ -38,6 +38,33 @@ export const QaCriterion = z.object({
 });
 export const QaResult = z.object({ summary: z.string(), criteria: z.array(QaCriterion) });
 export type QaResult = z.infer<typeof QaResult>;
+
+/** Acceptance criteria read from one ADO work item (Phase 4 input). */
+export const AcResult = z.object({ title: z.string(), criteria: z.array(z.string()) });
+export type AcResult = z.infer<typeof AcResult>;
+
+/**
+ * Reads the acceptance criteria of one work item, for the qa tab. Same ADO server and read-only header as
+ * board-reader, but only `wit_work_item`.
+ */
+export function acReader(cfg: HubConfig, workItem: number): AgentSpec {
+  const board = readerAgents(cfg).find((a) => a.name === "board-reader")!;
+  return {
+    ...board,
+    name: "ac-reader",
+    displayName: "Tiêu chí ADO",
+    prompt:
+      "Bạn là agent đọc acceptance criteria của một work item Azure DevOps.\n\n" +
+      `${UNTRUSTED_RULE}\n\nChỉ dùng tool chỉ-đọc. Trả về JSON đúng schema { title, criteria }.`,
+    task:
+      `Đọc work item ${workItem} bằng \`wit_work_item\` action "get" (project "${cfg.ado.project || "(theo work item)"}"). ` +
+      "Lấy trường `Microsoft.VSTS.Common.AcceptanceCriteria` (HTML): tách thành từng tiêu chí, mỗi tiêu chí một câu kiểm được " +
+      "trên giao diện, bỏ thẻ HTML, giữ nguyên ý. Trường rỗng thì lấy các ý kiểm được trong Description; vẫn không có thì criteria = []. " +
+      "title = tiêu đề work item.",
+    readTools: only("ado", ["wit_work_item"]),
+    output: "criteria",
+  };
+}
 
 export interface QaInput {
   url: string;

@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { loadConfig } from "../src/config.ts";
 import type { HubEvent } from "../src/events.ts";
-import { parseCriteria, PLAYWRIGHT_MCP_VERSION, QA_TOOLS, qaAgent, saveQaReport } from "../src/qa.ts";
+import { acReader, parseCriteria, PLAYWRIGHT_MCP_VERSION, QA_TOOLS, qaAgent, saveQaReport } from "../src/qa.ts";
 import { MockRuntime } from "../src/runtime/mock.ts";
 import { sessionTools } from "../src/runtime/sdk.ts";
 import { decide, originOf } from "../src/security.ts";
@@ -87,4 +87,20 @@ test("qa report: no result means every criterion is blocked, with the error", ()
   assert.match(html, /0 đạt · 0 không đạt · 2 không kiểm được/);
   assert.match(html, /Không mở được &lt;trang&gt;/);
   assert.ok(html.includes("http://x/&lt;b&gt;") && !html.includes("http://x/<b>"), "escaped");
+});
+
+test("ac-reader: read-only ADO (header kept), only wit_work_item; mock returns criteria", async () => {
+  const real = acReader({ ...(await loadConfig(root)), runtime: "copilot", ado: { org: "o", project: "p" } }, 1234);
+  assert.equal((real.mcpServers.ado as { headers?: Record<string, string> }).headers?.["X-MCP-Readonly"], "true");
+  assert.equal(real.kind, "reader");
+  assert.equal(decide(real, "ado-wit_work_item", { action: "get" }).decision, "allow");
+  for (const t of ["ado-wit_query", "ado-wit_work_item_write", "ado-wit_work_item_comment_write"]) assert.equal(decide(real, t).decision, "deny", t);
+  assert.match(real.task, /work item 1234/);
+
+  process.env.AGENTHUB_RUNTIME = "mock";
+  const cfg = await loadConfig(root);
+  const events: HubEvent[] = [];
+  for await (const e of new MockRuntime(cfg).run({ prompt: "x", agents: [acReader(cfg, 1234)], budget: 30, scenario: "ac-reader" })) events.push(e);
+  const r = events.find((e) => e.type === "criteria.result") as { criteria: string[] };
+  assert.equal(r.criteria.length, 3);
 });

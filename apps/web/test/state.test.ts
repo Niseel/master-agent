@@ -5,7 +5,7 @@ import { readerAgents, writerAgents } from "@agenthub/core/agents";
 import { qaAgent } from "@agenthub/core/qa";
 import { loadConfig } from "@agenthub/core/config";
 import { MockRuntime } from "@agenthub/core/runtime/mock";
-import { derive, pending, type AgentInfo, type Timed } from "../src/state.ts";
+import { derive, outcomeText, pending, todoGroups, writerOutcome, type AgentInfo, type Timed } from "../src/state.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
@@ -96,4 +96,48 @@ test("dashboard state: a writer run appended to the brief shows its result; repe
   const withQa = derive([...all, { ...qaSpec, servers: ["playwright"], missingConfig: null }], events);
   assert.equal(withQa.usedAiCredits, 31.5 + 3.2 + 4.8);
   assert.equal(withQa.agents.qa.qa?.criteria.length, 3);
+});
+
+test("todoGroups: action items as before, plus items of sources with a writer; original indexes kept", async () => {
+  const { events } = await replay("brief-ok");
+  const items = events.flatMap(({ event }) => (event.type === "agent.result" ? event.items : []));
+  const writerFor = { teams: "comms-writer", outlook: "comms-writer", ado: "board-writer", github: "code-writer" };
+  const g = todoGroups(items, writerFor);
+  assert.deepEqual(g.action.map((x) => x.i), items.flatMap((it, i) => (it.actionRequired ? [i] : [])));
+  assert.ok(g.other.length && g.other.every(({ item, i }) => !item.actionRequired && item.source !== "azure" && items[i] === item));
+  assert.ok(g.other.some(({ item }) => item.source === "ado"), "an ADO item that needs nothing can still be handed to board-writer");
+  assert.ok(items.some((it) => it.source === "azure" && !it.actionRequired), "fixture has such an Azure item");
+  assert.ok(!g.other.some(({ item }) => item.source === "azure"), "Azure has no writer");
+});
+
+test("writer outcome: a rejection shows its reason and 'nothing sent'; an approval shows what was sent", async () => {
+  const cfg = await loadConfig(root);
+  const writers = writerAgents(cfg);
+  const infos: AgentInfo[] = writers.map((a) => ({ ...a, servers: Object.keys(a.mcpServers), missingConfig: null }));
+  const run = async (decision: "approve" | "reject", events: Timed[] = []) => {
+    let t = events.at(-1)?.at ?? 0;
+    const rt = new MockRuntime(cfg);
+    for await (const event of rt.run({ prompt: "x", agents: writers, budget: 30, scenario: "act-board-writer" })) {
+      events.push({ at: (t += 10), event });
+      if (event.type === "approval.requested") {
+        const mid = writerOutcome(derive(infos, events), "board-writer");
+        assert.deepEqual(mid, { kind: "waiting", pending: 1 });
+        rt.resolveApproval(event.id, decision, decision === "reject" ? "Sai nội dung" : undefined);
+      }
+    }
+    return events;
+  };
+  const rejected = await run("reject");
+  const v = derive(infos, rejected);
+  assert.equal(v.approvals[0].feedback, "Sai nội dung");
+  assert.ok(v.approvals[0].resolvedAt! > v.approvals[0].at);
+  const o = writerOutcome(v, "board-writer");
+  assert.equal(o.kind, "nothing-sent");
+  assert.equal(outcomeText(o), "Bị từ chối 1 yêu cầu, không gửi gì");
+
+  const both = await run("approve", rejected);
+  const o2 = writerOutcome(derive(infos, both), "board-writer");
+  assert.equal(o2.kind, "sent", "only the latest run counts");
+  assert.equal(outcomeText(o2), "Đã gửi 1");
+  assert.equal(writerOutcome(derive(infos, both), "comms-writer").kind, "idle");
 });

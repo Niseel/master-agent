@@ -12,10 +12,12 @@ export interface AgentInfo {
   kind: "reader" | "writer" | "tester";
   servers: string[];
   missingConfig: string | null;
+  /** Set for readers that are not part of the brief (ac-reader). */
+  output?: "criteria";
 }
 export type Timed = { at: number; event: HubEvent };
 export type RunStatus = "idle" | "running" | "done" | "stopped";
-export type RunMode = "brief" | "act" | "qa";
+export type RunMode = "brief" | "act" | "qa" | "ac";
 /** Last qa run: `dir` is served at /qa/<dir>/. */
 export type QaSummary = QaReport & { dir: string };
 export interface ReportSummary {
@@ -26,6 +28,9 @@ export interface ReportSummary {
   blocked?: string[];
   usedAiCredits: number;
   durationMs: number;
+  previousDate?: string | null;
+  /** Same order as items: not in the previous day's brief. */
+  isNew?: boolean[];
 }
 export interface Snapshot {
   runtime: string;
@@ -36,9 +41,13 @@ export interface Snapshot {
   /** Which writer agent acts on an item of each source. */
   writerFor: Partial<Record<BriefItem["source"], string>>;
   prompt: string;
+  /** Per writer: the brief item its last run acted on. */
+  acts: Record<string, BriefItem>;
   events: Timed[];
   report: ReportSummary | null;
   qa: QaSummary | null;
+  /** Last acceptance criteria read from an ADO work item. */
+  ac: { workItem: number; title: string; criteria: string[]; error?: string } | null;
 }
 
 /** needs-action: a known blocking cause (login, EULA, config) the user must fix. warning: a tool error, agent went on. */
@@ -85,6 +94,9 @@ export interface Approval {
   args: unknown;
   at: number;
   decision?: "approve" | "reject";
+  /** Reason given with the decision (the UI sends "Người dùng từ chối" on a reject without text). */
+  feedback?: string;
+  resolvedAt?: number;
 }
 export interface View {
   agents: Record<string, AgentView>;
@@ -180,7 +192,7 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
       case "approval.resolved": {
         // Ids can repeat across runs appended to one brief (mock call ids): resolve the open one.
         const ap = view.approvals.find((a) => a.id === ev.id && !a.decision);
-        if (ap) ap.decision = ev.decision;
+        if (ap) Object.assign(ap, { decision: ev.decision, feedback: ev.feedback, resolvedAt: at });
         break;
       }
       case "usage":
@@ -205,10 +217,77 @@ export function derive(agents: AgentInfo[], events: Timed[]): View {
     }
   }
   // The brief's total covers the readers; writer and qa runs come after it and add their own.
-  const sum = (kind: AgentInfo["kind"]) => agents.filter((a) => a.kind === kind).reduce((n, a) => n + (view.agents[a.name].credits ?? 0), 0);
-  view.usedAiCredits = Math.max(usedTotal, sum("reader")) + sum("writer") + sum("tester");
+  const sum = (pick: (a: AgentInfo) => boolean) => agents.filter(pick).reduce((n, a) => n + (view.agents[a.name].credits ?? 0), 0);
+  const brief = (a: AgentInfo) => a.kind === "reader" && !a.output;
+  view.usedAiCredits = Math.max(usedTotal, sum(brief)) + sum((a) => !brief(a));
   return view;
 }
 
 /** Approvals still waiting for the user. */
 export const pending = (v: View) => v.approvals.filter((a) => !a.decision);
+
+type Indexed = { item: BriefItem; i: number };
+/**
+ * The to-do tab: "Cần bạn xử lý" (every actionRequired item, with or without a writer) and "Mục khác có agent ghi"
+ * (the rest, when their source has a writer). Found at Work run 10: real briefs often mark no ADO/GitHub item as
+ * actionRequired, so nothing could be handed to a writer. `i` is the item's index in report.items.
+ */
+export function todoGroups(items: BriefItem[], writerFor: Snapshot["writerFor"]) {
+  const all = items.map((item, i) => ({ item, i }));
+  return {
+    action: all.filter(({ item }) => item.actionRequired),
+    other: all.filter(({ item }) => !item.actionRequired && writerFor[item.source]),
+  } satisfies Record<string, Indexed[]>;
+}
+
+/** Same item (the act run gets a copy, so compare by value). */
+export const sameItem = (a: BriefItem, b: BriefItem) => JSON.stringify(a) === JSON.stringify(b);
+
+export type WriterOutcome =
+  | { kind: "idle" }
+  | { kind: "running" }
+  | { kind: "waiting"; pending: number }
+  | { kind: "failed"; error: string; hint?: string | null }
+  | { kind: "nothing-sent"; rejected: Approval[] }
+  | { kind: "sent"; sent: Approval[]; rejected: Approval[]; summary?: string; link?: string | null };
+
+/**
+ * What the writer's last run did, from its status, its approvals since it started and the approved calls' results.
+ * A write counts as sent only if the user approved it AND the tool call succeeded.
+ */
+export function writerOutcome(view: View, agent: string): WriterOutcome {
+  const av = view.agents[agent];
+  if (!av || av.status === "idle" || av.startedAt === undefined) return { kind: "idle" };
+  const mine = view.approvals.filter((a) => a.agent === agent && a.at >= av.startedAt!);
+  const waiting = mine.filter((a) => !a.decision).length;
+  if (waiting) return { kind: "waiting", pending: waiting };
+  if (av.status === "running") return { kind: "running" };
+  const rejected = mine.filter((a) => a.decision === "reject");
+  // Only this run's calls: mock call ids repeat across runs.
+  const call = (a: Approval) => av.calls.find((c) => c.callId === a.id && c.startedAt >= av.startedAt!);
+  const sent = mine.filter((a) => a.decision === "approve" && call(a)?.ok);
+  const broken = mine.find((a) => a.decision === "approve" && call(a)?.error);
+  if (sent.length) return { kind: "sent", sent, rejected, summary: av.action?.summary, link: av.action?.link };
+  if (av.status === "failed" || av.status === "needs-action" || broken) {
+    return { kind: "failed", error: av.error ?? call(broken!)?.error ?? "Lỗi", hint: av.hint ?? call(broken!)?.hint };
+  }
+  return { kind: "nothing-sent", rejected };
+}
+
+/** One line for the node and the detail panel. */
+export function outcomeText(o: WriterOutcome): string {
+  switch (o.kind) {
+    case "idle":
+      return "";
+    case "running":
+      return "Đang soạn";
+    case "waiting":
+      return `Chờ bạn duyệt ${o.pending} yêu cầu`;
+    case "failed":
+      return "Lỗi, không gửi gì";
+    case "nothing-sent":
+      return o.rejected.length ? `Bị từ chối ${o.rejected.length} yêu cầu, không gửi gì` : "Không gửi gì";
+    case "sent":
+      return `Đã gửi ${o.sent.length}${o.rejected.length ? `, từ chối ${o.rejected.length}` : ""}`;
+  }
+}

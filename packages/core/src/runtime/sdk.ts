@@ -11,7 +11,7 @@ import {
 import type { AgentSpec } from "../agents.ts";
 import { az } from "../auth.ts";
 import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
-import { QaResult } from "../qa.ts";
+import { AcResult, QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
 import { audit, decide, denyHint } from "../security.ts";
@@ -154,6 +154,8 @@ export class SdkRuntime implements AgentRuntime {
       if (a.kind === "writer") {
         const r = await s.sendAndWait({ prompt }, ActionResult, long);
         q.push({ type: "action.result", agent: a.name, ...r });
+      } else if (a.output === "criteria") {
+        q.push({ type: "criteria.result", agent: a.name, ...(await s.sendAndWait({ prompt }, AcResult, this.cfg.timeoutMs)) });
       } else if (a.kind === "tester") {
         q.push({ type: "qa.result", agent: a.name, result: await s.sendAndWait({ prompt }, QaResult, long) });
       } else {
@@ -191,7 +193,7 @@ export class SdkRuntime implements AgentRuntime {
     const wait = this.approvals.wait(id);
     q.push({ type: "approval.requested", id, agent: a.name, tool, args });
     const r = await wait;
-    q.push({ type: "approval.resolved", id, decision: r.decision });
+    q.push({ type: "approval.resolved", id, decision: r.decision, ...(r.feedback ? { feedback: r.feedback } : {}) });
     audit(this.cfg.root, { agent: a.name, tool, args, decision: r.decision, reason: r.feedback ?? "user" });
     if (r.decision === "reject") {
       return { permissionDecision: "deny", permissionDecisionReason: r.feedback ?? "Người dùng từ chối" };

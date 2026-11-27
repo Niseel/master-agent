@@ -3,7 +3,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
-import { QaResult } from "../qa.ts";
+import { AcResult, QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
 import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
@@ -62,7 +62,7 @@ export class MockRuntime implements AgentRuntime {
           yield { type: "approval.requested", id: ev.callId, agent: agent.name, tool: runtimeName, args: ev.args ?? {} };
           const r = await wait;
           audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision: r.decision, reason: r.feedback ?? "user" });
-          yield { type: "approval.resolved", id: ev.callId, decision: r.decision };
+          yield { type: "approval.resolved", id: ev.callId, decision: r.decision, ...(r.feedback ? { feedback: r.feedback } : {}) };
           lastApproval = r.decision === "approve" ? "approved" : "rejected";
           if (r.decision === "reject") {
             yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + (r.feedback ?? "Người dùng từ chối") };
@@ -88,7 +88,7 @@ export class MockRuntime implements AgentRuntime {
         yield ev;
         const { decision, feedback } = await wait;
         audit(this.cfg.root, { agent: ev.agent, tool: ev.tool, args: ev.args, decision, reason: feedback });
-        yield { type: "approval.resolved", id: ev.id, decision };
+        yield { type: "approval.resolved", id: ev.id, decision, ...(feedback ? { feedback } : {}) };
         continue;
       }
 
@@ -114,6 +114,11 @@ export class MockRuntime implements AgentRuntime {
         }
       }
 
+      if (ev.type === "criteria.result" && !AcResult.safeParse(ev).success) {
+        failed.add(ev.agent);
+        yield { type: "agent.failed", agent: ev.agent, error: "Tiêu chí sai schema" };
+        continue;
+      }
       if (ev.type === "qa.result" && !QaResult.safeParse(ev.result).success) {
         failed.add(ev.agent);
         yield { type: "agent.failed", agent: ev.agent, error: "Kết quả nghiệm thu sai schema" };

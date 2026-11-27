@@ -43,7 +43,14 @@ export function decide(agent: AgentSpec, tool: string, args?: unknown): { decisi
     return { decision: "allow", reason: "Trong allowlist" };
   }
   if (agent.kind === "writer") {
-    if (agent.writeTools?.includes(tool)) return { decision: "ask", reason: "Tool ghi cần người duyệt" };
+    if (agent.writeTools?.includes(tool)) {
+      const allowed = agent.allowedActions?.[tool];
+      const action = (args as { action?: unknown } | undefined)?.action;
+      if (allowed && !(typeof action === "string" && allowed.includes(action))) {
+        return { decision: "deny", reason: `${tool} chỉ được action: ${allowed.join(", ")} (nhận: ${typeof action === "string" ? action : "không có"})` };
+      }
+      return { decision: "ask", reason: "Tool ghi cần người duyệt" };
+    }
     return agent.readTools !== "*" && agent.readTools.includes(tool)
       ? { decision: "allow", reason: "Trong allowlist" }
       : { decision: "deny", reason: `Tool ${tool} không có trong danh sách tool của ${agent.name}` };
