@@ -165,8 +165,12 @@ trong báo cáo check việc mà người dùng chọn. **Mọi tool ghi chờ d
    ```
    So với `writeTools` / `readTools` của writer trong `packages/core/src/agents.ts`; tên nào không có thì ghi vào
    work-feedback (Home sửa). Tên sai thì agent không thấy tool đó và gate từ chối: an toàn, nhưng không làm được việc.
-2. Dùng: chạy check việc → tab **Việc cần làm** → chọn mục → **Giao việc** → sửa lời giao → **Soạn**. Tab **Duyệt**
-   tự mở khi agent muốn gọi tool ghi. **Duyệt = gửi thật.** Từ chối thì agent dừng, không thử cách khác.
+2. Dùng: chạy check việc → tab **Việc cần làm** → chọn mục (nhóm "Cần bạn xử lý", hoặc mở "Mục khác có agent ghi")
+   → **Giao việc** → sửa lời giao → **Soạn**. Tab **Duyệt** tự mở khi agent muốn gọi tool ghi. **Duyệt = gửi thật.**
+   Từ chối (kèm lý do) thì agent dừng, không thử cách khác. Kết quả hiện trên mục đã giao, trên node writer và ở
+   "Đã xử lý" của tab Duyệt (quyết định, giờ, lý do, tham số).
+   board-writer chỉ được `wit_work_item_comment_write` action `add`/`update` và `wit_work_item_write` action `update`
+   (không tạo work item); action khác bị gate từ chối trước khi tới hàng duyệt.
 3. Mỗi lần giao việc là một session riêng (tối thiểu 30 AI Credits theo giới hạn runtime; dùng thực tế thường ít hơn).
 
 ## 5e. Nghiệm thu (Phase 4)
@@ -176,6 +180,8 @@ Agent `qa` mở trang bằng Playwright (headless), kiểm từng tiêu chí, qu
 Kết quả: `reports/qa-<thời gian>/index.html` (mở từ link trên tab, hoặc mở file trực tiếp), cùng thư mục có ảnh, `qa.webm`,
 `traces/` (`npx playwright show-trace <file>`).
 
+- Tiêu chí lấy từ work item: nhập số work item → **Lấy tiêu chí** (agent `ac-reader`, chỉ đọc `wit_work_item`) →
+  **Dùng các tiêu chí này**. Một lượt là một session (trần 30 AI Credits).
 - Chỉ mở được đúng origin của URL đã nhập. Không chạy JS tuỳ ý, không tải file lên, không mở tab khác.
 - Không nhập mật khẩu hay tài khoản thật vào trang được kiểm. Chỉ kiểm trang local / staging.
 - Một lượt là một session (trần 30 AI Credits theo giới hạn runtime).

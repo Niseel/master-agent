@@ -34,15 +34,17 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Dashboard realtime: sơ đồ orchestrator → agent → MCP server, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
 | Chi tiết từng agent / MCP server: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node |
 | Hàng duyệt: xem tham số đầy đủ, Duyệt / Từ chối kèm lý do | tab Duyệt (tự mở khi có yêu cầu) |
+| Lấy tiêu chí nghiệm thu từ work item ADO (trường Acceptance Criteria, chỉ đọc) | tab Nghiệm thu → Lấy tiêu chí |
 | Nghiệm thu một trang web: nhập URL + tiêu chí → agent `qa` mở trang bằng Playwright, kiểm từng tiêu chí, quay video, chụp ảnh, lưu trace → báo cáo HTML pass/fail | tab Nghiệm thu, `reports/qa-<thời gian>/index.html` |
-| Giao việc cho agent ghi: chọn một mục "cần xử lý" trong báo cáo → agent soạn tin Teams / comment ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi | tab Việc cần làm (chưa kiểm tên tool ghi ở Work) |
+| Giao việc cho agent ghi: chọn một mục trong báo cáo (nhóm "Cần bạn xử lý" hoặc "Mục khác có agent ghi") → agent soạn tin Teams / comment, cập nhật work item ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi. Kết quả ("đã gửi", "không có gì được gửi" + lý do từ chối) hiện trên mục, node và tab Duyệt | tab Việc cần làm |
+| "Có gì mới": mục không có trong check việc ngày trước được đánh dấu "Mới" | báo cáo + tab Việc cần làm |
 | Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
 | Thanh credit đã dùng / ngân sách; nút Dừng (yêu cầu đang chờ bị từ chối, không bao giờ tự duyệt) | thanh trên |
 | An toàn: agent chỉ thấy tool trong allowlist, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
 | Chạy thử không cần dịch vụ thật: runtime `mock` với 3 kịch bản, `byok` với MCP giả | `AGENTHUB_RUNTIME`, `AGENTHUB_SCENARIO` |
 | Công cụ kiểm: tool model thấy (`pnpm smoke <agent> --tools`), danh sách tool thật (`pnpm list-tools`), Playwright smoke | không tốn credit |
 
-Chưa có: lấy tiêu chí nghiệm thu từ story ADO, đính kèm báo cáo nghiệm thu vào work item, luồng nhiều bước (story ADO → thu thập context → hỏi Teams → theo dõi trả lời).
+Chưa có: đính kèm báo cáo nghiệm thu vào work item, lịch chạy tự động, luồng nhiều bước (story ADO → thu thập context → hỏi Teams → theo dõi trả lời).
 
 ## Chạy ở Home (không cần Copilot công ty)
 
