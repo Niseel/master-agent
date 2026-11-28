@@ -5,7 +5,7 @@
 
 **Vai trò (từ 2026-11-26): Work chỉ chạy app và kiểm chứng. Claude Code ở Home viết toàn bộ code.**
 - Không sửa code: `apps/`, `packages/`, `scripts/`, `fixtures/`, `package.json`, `pnpm-lock.yaml`, `agenthub.config.ts`.
-- Được làm: chạy lệnh trong handoff (`pnpm install/test/typecheck/brief/smoke/list-tools/playwright-smoke`),
+- Được làm: chạy lệnh trong handoff (`pnpm install/test/typecheck/brief/wit/smoke/list-tools/dashboard`),
   đọc `logs/audit-*.jsonl` và báo cáo, sửa `.env` (không commit).
 - Chỉ ghi vào: `docs/step0-results.md`, `docs/work-feedback.md`, `docs/handoff-claude.md`, `docs/mcp-tools.md`
   (do `pnpm list-tools` sinh), checklist `[Work]` trong `PLAN.md`. Cần sửa code thì ghi đề xuất vào
@@ -13,7 +13,7 @@
 
 - TypeScript strict, ESM, Node 22, pnpm. Chạy `pnpm test` và `pnpm typecheck` trước khi commit.
 - API SDK: đối chiếu `node_modules/@github/copilot-sdk/dist/types.d.ts`, không đoán.
-- Không thêm tool ghi vào agent đọc (`kind: "reader"` trong `packages/core/src/agents.ts`).
+- Không thêm tool ghi vào agent (mọi agent trong `packages/core/src/agents.ts` chỉ đọc).
   Mọi thay đổi về quyền phải ghi rõ trong commit message.
 - Không dùng `approveAll`. Mọi quyết định tool đi qua `decide()` trong `packages/core/src/security.ts`.
 - **Không đưa dữ liệu công ty vào repo**: không vào fixture, test, docs, commit message.

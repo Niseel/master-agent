@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import type { AgentSpec } from "./agents.ts";
 
-export type Decision = "allow" | "deny" | "ask";
+export type Decision = "allow" | "deny";
 
 // Words that mark a tool as a write. Matched per name segment, so "list_workflow_runs" stays a read.
 const WRITE_WORDS = new Set(
@@ -22,39 +22,12 @@ const segments = (name: string) =>
 export const looksLikeWrite = (tool: string) => segments(tool).some((s) => WRITE_WORDS.has(s));
 
 /**
- * The approval gate. `tool` is the runtime name `<server-key>-<tool>`.
- * Readers: allow only their own servers' read tools, deny everything else.
- * Writers (Phase 3): their writeTools always "ask" (approval queue), their readTools are allowed, the rest denied.
- * Testers (Phase 4): listed browser tools are allowed; `browser_navigate` only to allowedOrigins (needs `args`).
+ * The tool gate. `tool` is the runtime name `<server-key>-<tool>`. Agents only read: allow their own servers' listed
+ * read tools, deny everything else. There is no approval queue: a write is always denied.
  */
-export function decide(agent: AgentSpec, tool: string, args?: unknown): { decision: Decision; reason: string } {
+export function decide(agent: AgentSpec, tool: string): { decision: Decision; reason: string } {
   const own = Object.keys(agent.mcpServers).some((k) => tool.startsWith(`${k}-`));
   if (!own) return { decision: "deny", reason: `Tool ${tool} không thuộc MCP server của ${agent.name}` };
-  if (agent.kind === "tester") {
-    if (agent.readTools === "*" || !agent.readTools.includes(tool)) {
-      return { decision: "deny", reason: `Tool ${tool} không có trong danh sách tool của ${agent.name}` };
-    }
-    if (tool.endsWith("-browser_navigate")) {
-      const origin = originOf((args as { url?: unknown } | undefined)?.url);
-      if (!origin || !agent.allowedOrigins?.includes(origin)) {
-        return { decision: "deny", reason: `URL ngoài trang được kiểm (chỉ ${agent.allowedOrigins?.join(", ") || "không có"})` };
-      }
-    }
-    return { decision: "allow", reason: "Trong allowlist" };
-  }
-  if (agent.kind === "writer") {
-    if (agent.writeTools?.includes(tool)) {
-      const allowed = agent.allowedActions?.[tool];
-      const action = (args as { action?: unknown } | undefined)?.action;
-      if (allowed && !(typeof action === "string" && allowed.includes(action))) {
-        return { decision: "deny", reason: `${tool} chỉ được action: ${allowed.join(", ")} (nhận: ${typeof action === "string" ? action : "không có"})` };
-      }
-      return { decision: "ask", reason: "Tool ghi cần người duyệt" };
-    }
-    return agent.readTools !== "*" && agent.readTools.includes(tool)
-      ? { decision: "allow", reason: "Trong allowlist" }
-      : { decision: "deny", reason: `Tool ${tool} không có trong danh sách tool của ${agent.name}` };
-  }
   if (agent.readTools !== "*") {
     return agent.readTools.includes(tool)
       ? { decision: "allow", reason: "Trong allowlist" }
@@ -68,31 +41,12 @@ export function decide(agent: AgentSpec, tool: string, args?: unknown): { decisi
 export { DENIED_PREFIX } from "./hints.ts";
 
 /**
- * Found at Work run 11: after the user rejected a write, the writer sent the same write again (empty body). One reject
- * ends the run's writes: any later write of that agent in the same run is denied without reaching the approval queue.
- */
-export const AFTER_REJECT = "Người dùng đã từ chối một yêu cầu ghi trong lượt này: không gửi lại, kết thúc và báo lý do";
-export const stopAfterReject = (d: { decision: Decision; reason: string }, rejected: boolean) =>
-  rejected && d.decision === "ask" ? { decision: "deny" as const, reason: AFTER_REJECT } : d;
-
-/** `https://host:port` of an http(s) URL, else null (file:, javascript:, data:, garbage). */
-export function originOf(url: unknown): string | null {
-  if (typeof url !== "string") return null;
-  try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Extra text for the model when a call is denied: the tools it may call. The model sees this reason and fixes a
  * guessed tool name on its next try (found at Work: `github-list`, `github-list_workflow_runs_placeholder`).
  * Kept out of the audit/report reason so those stay short.
  */
 export const denyHint = (agent: AgentSpec) =>
-  agent.readTools === "*" ? "" : ` Chỉ dùng các tool: ${[...agent.readTools, ...(agent.writeTools ?? [])].join(", ")}.`;
+  agent.readTools === "*" ? "" : ` Chỉ dùng các tool: ${agent.readTools.join(", ")}.`;
 
 const SECRET_KEY = /token|secret|password|passwd|api[-_]?key|authorization|cookie|credential/i;
 

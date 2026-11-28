@@ -1,9 +1,0 @@
-{"event":{"type":"agent.started","agent":"code-writer","at":"2026-11-23T08:10:00Z"}}
-{"delayMs":150,"event":{"type":"tool.started","agent":"code-writer","server":"github","tool":"get_me","callId":"w1","args":{}}}
-{"delayMs":100,"event":{"type":"tool.completed","callId":"w1","ok":true}}
-{"delayMs":100,"event":{"type":"tool.started","agent":"code-writer","server":"github","tool":"add_issue_comment","callId":"w2","args":{"owner":"me","repo":"orders","issue_number":87,"body":"Đã xem lại, phần retry ổn. Nhờ thêm test cho trường hợp gateway trả 503 hai lần liên tiếp."}}}
-{"delayMs":150,"when":"approved","event":{"type":"tool.completed","callId":"w2","ok":true}}
-{"delayMs":50,"when":"approved","event":{"type":"action.result","agent":"code-writer","summary":"Đã comment vào PR #87.","link":"https://github.com/me/orders/pull/87"}}
-{"delayMs":50,"when":"rejected","event":{"type":"action.result","agent":"code-writer","summary":"Không comment: người dùng từ chối.","link":null}}
-{"delayMs":50,"event":{"type":"usage","agent":"code-writer","usedAiCredits":2.9,"maxAiCredits":30}}
-{"event":{"type":"agent.completed","agent":"code-writer","durationMs":800,"tokens":1800}}

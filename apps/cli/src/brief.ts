@@ -1,7 +1,7 @@
 /**
  * pnpm brief  — morning brief ("check việc").
  * Runs the 4 reader agents in parallel, writes reports/brief-YYYY-MM-DD.html.
- * Read-only: any approval request is rejected automatically.
+ * Read-only: the gate denies every write tool.
  */
 import { readerAgents } from "@agenthub/core/agents";
 import { loadConfig } from "@agenthub/core/config";
@@ -52,10 +52,6 @@ for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || 
     case "agent.failed":
       unusable.add(ev.agent);
       console.log(`  ✗ ${ev.agent}: ${ev.error}`);
-      break;
-    case "approval.requested":
-      console.log(`  ⛔ ${ev.agent} xin gọi ${ev.tool} — tự từ chối (brief chỉ-đọc)`);
-      runtime.resolveApproval(ev.id, "reject", "Brief là chế độ chỉ-đọc");
       break;
     case "message":
       if (ev.text.startsWith("Bị chặn")) console.log(`    ⛔ ${ev.agent}: ${ev.text}`);

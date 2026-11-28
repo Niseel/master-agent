@@ -2,14 +2,13 @@
  * Step 0 helper: connect every agent's MCP servers through the Copilot SDK and write the
  * real tool names to docs/mcp-tools.md (structure only, no data).
  *   AGENTHUB_RUNTIME=copilot pnpm list-tools              reader servers -> docs/mcp-tools.md
- *   AGENTHUB_RUNTIME=copilot pnpm list-tools --writers    writer servers (no read-only headers) -> docs/mcp-tools-writers.md
  * No prompt is sent, so this uses no AI Credits.
  */
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { CopilotClient } from "@github/copilot-sdk";
-import { readerAgents, writerAgents } from "../packages/core/src/agents.ts";
+import { readerAgents } from "../packages/core/src/agents.ts";
 import { loadConfig } from "../packages/core/src/config.ts";
 import { mcpAuth } from "../packages/core/src/runtime/sdk.ts";
 import { looksLikeWrite } from "../packages/core/src/security.ts";
@@ -20,8 +19,7 @@ try {
 
 const cfg = await loadConfig();
 if (cfg.runtime === "mock") throw new Error("Đặt AGENTHUB_RUNTIME=copilot (hoặc byok) để liệt kê tool thật");
-const writers = process.argv.includes("--writers");
-const agents = (writers ? writerAgents(cfg) : readerAgents(cfg)).filter((a) => !a.missingConfig);
+const agents = readerAgents(cfg).filter((a) => !a.missingConfig);
 const servers = Object.assign({}, ...agents.map((a) => a.mcpServers));
 
 const client = new CopilotClient();
@@ -45,9 +43,7 @@ const lines = [
   "# MCP tools",
   "",
   `> Sinh bởi \`pnpm list-tools\` lúc ${new Date().toISOString()} (runtime=${cfg.runtime}). Chỉ thông tin cấu trúc.`,
-  writers
-    ? "> Server của agent ghi (không có header chỉ-đọc). Đối chiếu tên với `writeTools`/`readTools` của writer trong `packages/core/src/agents.ts`."
-    : "> Cột **Loại** là đoán theo tên — hãy sửa tay `read`/`write` rồi chép tên `read` vào `readTools` trong `packages/core/src/agents.ts`.",
+  "> Cột **Loại** là đoán theo tên — hãy sửa tay `read`/`write` rồi chép tên `read` vào `readTools` trong `packages/core/src/agents.ts`.",
   "",
 ];
 for (const a of agents) {
@@ -68,7 +64,7 @@ for (const a of agents) {
   }
 }
 
-const out = path.join(cfg.root, writers ? "docs/mcp-tools-writers.md" : "docs/mcp-tools.md");
+const out = path.join(cfg.root, "docs/mcp-tools.md");
 writeFileSync(out, lines.join("\n"));
 console.log(`Đã ghi ${out}`);
 console.log(list.servers.map((s) => `  ${s.name}: ${s.status}${s.error ? ` (${s.error})` : ""}`).join("\n"));

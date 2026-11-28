@@ -6,34 +6,21 @@
  *   GET  /report                  last report as HTML (no scripts allowed)
  *   GET  /*                       the built dashboard (apps/web/dist, `pnpm dashboard`)
  *   POST /api/run      {prompt}   start a brief run with the reader agents (409 while one is running)
- *   POST /api/act      {agent, item, instruction}  run one writer agent on a brief item (Phase 3); its writes wait for approval
- *   POST /api/qa       {url, criteria}  acceptance test of one site with Playwright (Phase 4); criteria = one per line
- *   POST /api/qa/criteria {workItem}  read the acceptance criteria of one ADO work item for the qa form
- *   GET  /qa/<run>/<file>         a qa run's report (index.html), screenshots, video, trace
- *   POST /api/approvals/:id {decision: "approve"|"reject", feedback?}
  *   POST /api/stop
  * SSE + POST instead of WebSocket: the stream only flows server -> browser, and node:http does both without a dependency.
  */
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { checkAuth } from "@agenthub/core/auth";
-import { readerAgents, WRITER_FOR, writerAgents, writerTask, type AgentSpec } from "@agenthub/core/agents";
-import { BriefItem } from "@agenthub/core/brief";
-import { acReader, parseCriteria, qaAgent, qaDir, saveQaReport, type QaInput, type QaReport } from "@agenthub/core/qa";
-import { originOf } from "@agenthub/core/security";
+import { readerAgents, type AgentSpec } from "@agenthub/core/agents";
 import type { HubConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
 import { renderReport, saveReport, type BriefReport } from "@agenthub/core/report";
-import { createRuntime, type AgentRuntime, type RunInput } from "@agenthub/core/runtime/index";
+import { createRuntime, type AgentRuntime } from "@agenthub/core/runtime/index";
 
 export type RunStatus = "idle" | "running" | "done" | "stopped";
-/**
- * brief: the reader agents, makes a report. act: one writer on one brief item. qa: one acceptance test.
- * act and qa are appended to the brief's events, so its graph and report stay.
- */
-export type RunMode = "brief" | "act" | "qa" | "ac";
 type Send = (event: "state" | "hub" | "run", data: unknown) => void;
 
 /** One run at a time. Holds the events so a browser that connects late sees the whole run. */
@@ -43,36 +30,15 @@ export class Hub {
   times: number[] = [];
   prompt = "";
   status: RunStatus = "idle";
-  mode: RunMode = "brief";
   report: { file: string; report: BriefReport } | null = null;
-  /** Per writer: the brief item its last run acted on, so the to-do tab shows the outcome on the right item. */
-  acts: Record<string, BriefItem> = {};
-  /** Last acceptance criteria read from ADO (ac-reader), for the qa form. */
-  ac: { workItem: number; title: string; criteria: string[]; error?: string } | null = null;
-  /** Last qa run: dir name under the reports dir, and its report. */
-  qa: { dir: string; report: QaReport } | null = null;
   private runtime: AgentRuntime | null = null;
   private stopping = false;
   private listeners = new Set<Send>();
-  readonly readers: AgentSpec[];
-  readonly writers: AgentSpec[];
-  /** Readers then writers: what the dashboard draws. */
+  /** The reader agents: what a brief runs and the dashboard draws. */
   readonly agents: AgentSpec[];
 
   constructor(readonly cfg: HubConfig) {
-    this.readers = readerAgents(cfg);
-    this.writers = writerAgents(cfg);
-    // Drawn as one node; each run builds its own spec (target URL, output dir).
-    const qaShape = qaAgent(cfg, { url: "http://127.0.0.1/", criteria: [] }, this.reportDir);
-    this.agents = [...this.readers, ...this.writers, acReader(cfg, 0), qaShape];
-  }
-
-  get reportDir() {
-    return path.dirname(qaDir(this.cfg));
-  }
-
-  private qaState() {
-    return this.qa && { dir: this.qa.dir, ...this.qa.report };
+    this.agents = readerAgents(cfg);
   }
 
   state() {
@@ -82,20 +48,13 @@ export class Hub {
       agents: this.agents.map((a) => ({
         name: a.name,
         displayName: a.displayName,
-        kind: a.kind,
         servers: Object.keys(a.mcpServers),
         missingConfig: a.missingConfig ?? null,
-        ...(a.output ? { output: a.output } : {}),
       })),
       status: this.status,
-      mode: this.mode,
-      writerFor: WRITER_FOR,
-      acts: this.acts,
       prompt: this.prompt,
       events: this.events.map((event, i) => ({ at: this.times[i], event })),
       report: this.report && { file: this.report.file, ...this.report.report },
-      qa: this.qaState(),
-      ac: this.ac,
     };
   }
 
@@ -111,78 +70,27 @@ export class Hub {
 
   /** Starts a brief in the background. The returned promise ends with the run (tests await it; HTTP does not). */
   start(prompt: string) {
-    return this.launch("brief", prompt, { prompt, agents: this.readers, budget: this.cfg.maxAiCredits });
-  }
-
-  /** Runs one writer on one brief item. Its events are appended, so the brief's graph and report stay. */
-  act(agent: unknown, item: unknown, instruction: unknown) {
-    const writer = this.writers.find((w) => w.name === agent);
-    if (!writer) throw new HttpError(400, "agent phải là một agent ghi");
-    const parsed = BriefItem.safeParse(item);
-    if (!parsed.success) throw new HttpError(400, "item không đúng schema BriefItem");
-    if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 2000) {
-      throw new HttpError(400, "instruction phải là chuỗi 1–2000 ký tự");
-    }
-    const spec = { ...writer, task: writerTask(parsed.data) };
-    if (this.status !== "running") this.acts = { ...this.acts, [writer.name]: parsed.data };
-    // A writer gets one session; MIN_SESSION_CREDITS in sdk.ts raises this if needed.
-    return this.launch("act", instruction.trim(), { prompt: instruction.trim(), agents: [spec], budget: 30, scenario: `act-${writer.name}` });
-  }
-
-  /** Acceptance test of `url` against `criteria` (one per line). Report and files land in <reports>/qa-<time>/. */
-  startQa(url: unknown, criteria: unknown) {
-    if (typeof url !== "string" || !originOf(url)) throw new HttpError(400, "url phải là http(s)");
-    const list = typeof criteria === "string" ? parseCriteria(criteria) : [];
-    if (!list.length) throw new HttpError(400, "Cần ít nhất 1 tiêu chí (mỗi dòng một tiêu chí)");
-    const input: QaInput = { url, criteria: list };
-    const dir = qaDir(this.cfg);
-    mkdirSync(dir, { recursive: true });
-    const spec = qaAgent(this.cfg, input, dir);
-    return this.launch("qa", `Nghiệm thu ${url}`, { prompt: "Nghiệm thu trang dưới đây theo các tiêu chí.", agents: [spec], budget: 30, scenario: "qa-ok" }, (events, ms) => {
-      this.qa = { dir: path.basename(dir), report: saveQaReport(this.cfg, dir, input, events, ms).report };
-    });
-  }
-
-  /** Read the acceptance criteria of work item `workItem` (ac-reader, read-only). */
-  startCriteria(workItem: unknown) {
-    if (typeof workItem !== "number" || !Number.isInteger(workItem) || workItem <= 0) throw new HttpError(400, "workItem phải là số nguyên dương");
-    const spec = acReader(this.cfg, workItem);
-    if (spec.missingConfig) throw new HttpError(400, spec.missingConfig);
-    return this.launch("ac", `Lấy tiêu chí work item ${workItem}`, { prompt: "Đọc tiêu chí nghiệm thu.", agents: [spec], budget: 30, scenario: "ac-reader" }, (events) => {
-      const r = events.find((e) => e.type === "criteria.result");
-      const failed = events.find((e) => e.type === "agent.failed");
-      this.ac = r ? { workItem, title: r.title, criteria: r.criteria } : { workItem, title: "", criteria: [], error: failed?.error ?? "Không đọc được tiêu chí" };
-    });
-  }
-
-  private async launch(mode: RunMode, prompt: string, input: RunInput, finish?: (events: HubEvent[], durationMs: number) => void) {
     if (this.status === "running") throw new HttpError(409, "Đang có lượt chạy");
     this.status = "running";
-    this.mode = mode;
-    if (mode === "brief") {
-      this.events = [];
-      this.times = [];
-      this.report = null;
-      this.acts = {};
-    }
+    this.events = [];
+    this.times = [];
+    this.report = null;
     this.prompt = prompt;
     this.stopping = false;
-    this.emit("run", { status: this.status, mode, prompt, acts: this.acts });
+    this.emit("run", { status: this.status, prompt });
     const t0 = Date.now();
-    const first = this.events.length;
     const done = (async () => {
       try {
         const rt = (this.runtime = await createRuntime(this.cfg));
-        for await (const ev of rt.run(input)) this.push(ev);
+        for await (const ev of rt.run({ prompt, agents: this.agents, budget: this.cfg.maxAiCredits })) this.push(ev);
       } catch (e) {
         this.push({ type: "agent.failed", agent: "orchestrator", error: e instanceof Error ? e.message : String(e) });
       } finally {
         await this.runtime?.stop();
         this.runtime = null;
-        if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0, new Date(), this.stopping);
-        finish?.(this.events.slice(first), Date.now() - t0);
+        this.report = saveReport(this.cfg, this.events, Date.now() - t0, new Date(), this.stopping);
         this.status = this.stopping ? "stopped" : "done";
-        this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report }, qa: this.qaState(), ac: this.ac });
+        this.emit("run", { status: this.status, report: { file: this.report.file, ...this.report.report } });
       }
     })();
     return { done };
@@ -195,21 +103,11 @@ export class Hub {
     this.emit("hub", { at, event });
   }
 
-  resolveApproval(id: string, decision: "approve" | "reject", feedback?: string) {
-    if (!this.runtime) throw new HttpError(409, "Không có lượt chạy");
-    try {
-      this.runtime.resolveApproval(id, decision, feedback);
-    } catch (e) {
-      throw new HttpError(404, e instanceof Error ? e.message : String(e));
-    }
-  }
-
   async stop() {
     this.stopping = true;
-    await this.runtime?.stop(); // pending approvals are rejected, never approved
+    await this.runtime?.stop();
   }
 }
-
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -236,7 +134,8 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 /**
- * Local-only guard. The API can approve write tools, so any web page the user opens must not reach it:
+ * Local-only guard. The API starts runs that read the user's mail and boards, so any web page the user opens must
+ * not reach it:
  * Host must be loopback with our port (blocks DNS rebinding); a browser Origin, if sent, must be that same host.
  */
 function checkOrigin(req: IncomingMessage, port: number) {
@@ -254,7 +153,6 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".json": "application/json; charset=utf-8",
-  ".webm": "video/webm",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
 };
@@ -264,24 +162,6 @@ const APP_CSP =
   "connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 /** The report holds mail/chat text: no scripts at all, only its inline <style>. */
 const REPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'; base-uri 'none'";
-
-/** A qa report: its own screenshots and video only, no scripts. */
-const QA_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; frame-ancestors 'self'; base-uri 'none'";
-
-/** GET /qa/<run>/<file>: only inside one qa-* dir of the reports dir. Unknown types (traces) download, never render. */
-function serveQa(res: ServerResponse, reportDir: string, run: string, rel: string) {
-  if (!/^qa-[\w-]+$/.test(run)) throw new HttpError(404, "Không có");
-  const base = path.join(reportDir, run);
-  const file = path.resolve(base, "." + path.sep + decodeURIComponent(rel || "index.html"));
-  if (!file.startsWith(base + path.sep) || !existsSync(file) || !statSync(file).isFile()) throw new HttpError(404, "Không có");
-  const type = MIME[path.extname(file)];
-  res.writeHead(200, {
-    "content-type": type ?? "application/octet-stream",
-    "content-security-policy": QA_CSP,
-    ...(type ? {} : { "content-disposition": `attachment; filename="${path.basename(file).replace(/[^\w.-]/g, "_")}"` }),
-  });
-  res.end(readFileSync(file));
-}
 
 /** Serve apps/web/dist; unknown paths fall back to index.html. Never leaves the dist dir. */
 function serveStatic(res: ServerResponse, webDir: string, pathname: string) {
@@ -307,7 +187,7 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
       const route = `${req.method} ${url.pathname}`;
 
       if (route === "GET /api/state") return json(res, 200, hub.state());
-      if (route === "GET /api/auth") return json(res, 200, await checkAuth(hub.readers, hub.cfg.runtime));
+      if (route === "GET /api/auth") return json(res, 200, await checkAuth(hub.agents, hub.cfg.runtime));
       if (route === "GET /report") {
         if (!hub.report) throw new HttpError(404, "Chưa có báo cáo: chạy check việc trước");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-security-policy": REPORT_CSP });
@@ -323,30 +203,6 @@ export function createHubServer(hub: Hub, webDir = path.join(hub.cfg.root, "apps
         const { prompt } = await readJson(req);
         await hub.start(typeof prompt === "string" && prompt.trim() ? prompt.trim() : "check việc");
         return json(res, 202, { status: hub.status });
-      }
-      if (route === "POST /api/qa/criteria") {
-        const { workItem } = await readJson(req);
-        await hub.startCriteria(workItem);
-        return json(res, 202, { status: hub.status });
-      }
-      if (route === "POST /api/qa") {
-        const { url: target, criteria } = await readJson(req);
-        await hub.startQa(target, criteria);
-        return json(res, 202, { status: hub.status });
-      }
-      const qaFile = (req.method === "GET" || req.method === "HEAD") && url.pathname.match(/^\/qa\/([^/]+)\/?(.*)$/);
-      if (qaFile) return serveQa(res, hub.reportDir, qaFile[1], qaFile[2]);
-      if (route === "POST /api/act") {
-        const { agent, item, instruction } = await readJson(req);
-        await hub.act(agent, item, instruction);
-        return json(res, 202, { status: hub.status });
-      }
-      const approval = req.method === "POST" && url.pathname.match(/^\/api\/approvals\/([^/]+)$/);
-      if (approval) {
-        const { decision, feedback } = await readJson(req);
-        if (decision !== "approve" && decision !== "reject") throw new HttpError(400, "decision phải là approve hoặc reject");
-        hub.resolveApproval(decodeURIComponent(approval[1]), decision, typeof feedback === "string" ? feedback : undefined);
-        return json(res, 200, { ok: true });
       }
       if (route === "POST /api/stop") {
         await readJson(req);

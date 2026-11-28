@@ -47,24 +47,20 @@ async function readSse(res: Response, until: (event: string, data: any) => boole
   }
 }
 
-test("server: run over HTTP, events stream over SSE, approval resolved from the browser, report saved", async () => {
+test("server: run over HTTP, events stream over SSE, a write tool is denied, report saved", async () => {
   const { hub, server, base, post } = await start("brief-ok");
   try {
     const sse = await fetch(`${base}/api/events`);
     assert.equal((await post("/api/run", { prompt: "check việc" })).status, 202);
     assert.equal((await post("/api/run", {})).status, 409, "one run at a time");
 
-    const seen = await readSse(sse, async (event, data) => {
-      if (event === "hub" && data.event.type === "approval.requested") {
-        assert.equal(typeof data.at, "number");
-        assert.equal((await post(`/api/approvals/${data.event.id}`, { decision: "maybe" })).status, 400);
-        assert.equal((await post(`/api/approvals/${data.event.id}`, { decision: "reject", feedback: "không" })).status, 200);
-      }
-      return event === "run" && data.status !== "running";
-    });
+    const seen = await readSse(sse, (event, data) => event === "run" && data.status !== "running");
     assert.equal(seen[0].event, "state");
+    const hub1 = seen.find((s) => s.event === "hub")!;
+    assert.equal(typeof hub1.data.at, "number");
     const hubEvents = seen.filter((s) => s.event === "hub").map((s) => s.data.event as HubEvent);
-    assert.ok(hubEvents.some((e) => e.type === "approval.resolved" && e.decision === "reject"));
+    // brief-ok: code-reader tries a write (prompt injection in a PR comment); the gate denies it, nothing waits.
+    assert.ok(hubEvents.some((e) => e.type === "message" && e.agent === "code-reader" && /Bị chặn.*github-add_issue_comment/.test(e.text)));
     assert.ok(hubEvents.some((e) => e.type === "agent.result"));
     const end = seen.at(-1)!.data;
     assert.equal(end.status, "done");
@@ -87,7 +83,7 @@ test("server: run over HTTP, events stream over SSE, approval resolved from the 
   }
 });
 
-test("server: only loopback Host, same-origin JSON requests; approval without a run is 409", async () => {
+test("server: only loopback Host, same-origin JSON requests; removed routes are 404", async () => {
   const { server, post, base } = await start("brief-ok");
   try {
     assert.equal((await post("/api/run", {}, { origin: "https://evil.example" })).status, 403);
@@ -98,108 +94,21 @@ test("server: only loopback Host, same-origin JSON requests; approval without a 
       request(`${base}/api/state`, { headers: { host: "evil.example" } }, (r) => ok(r.statusCode!)).on("error", fail).end(),
     );
     assert.equal(rebind, 403);
-    assert.equal((await post("/api/approvals/nope", { decision: "approve" })).status, 409, "no run yet");
+    for (const p of ["/api/approvals/x", "/api/act", "/api/qa", "/api/qa/criteria"]) assert.equal((await post(p, {})).status, 404, p);
   } finally {
     server.close();
   }
 });
 
-test("server: act runs one writer on a brief item, after the brief; bad input is 400; the report stays", async () => {
-  const { hub, server, post } = await start("brief-ok");
-  try {
-    const brief = await hub.start("check việc");
-    for (let i = 0; i < 200 && !hub.events.some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
-    hub.resolveApproval((hub.events.find((e) => e.type === "approval.requested") as { id: string }).id, "reject");
-    await brief.done;
-    const report = hub.report;
-    const item = report!.report.items.find((i) => i.source === "teams")!;
-
-    assert.equal((await post("/api/act", { agent: "comms-reader", item, instruction: "x" })).status, 400, "a reader cannot act");
-    assert.equal((await post("/api/act", { agent: "comms-writer", item: { title: "x" }, instruction: "x" })).status, 400);
-    assert.equal((await post("/api/act", { agent: "comms-writer", item, instruction: " " })).status, 400);
-
-    const before = hub.events.length;
-    const { done } = await hub.act("comms-writer", item, "Trả lời B: ngưỡng 2 triệu");
-    assert.equal((await post("/api/act", { agent: "comms-writer", item, instruction: "x" })).status, 409, "one run at a time");
-    for (let i = 0; i < 200 && !hub.events.slice(before).some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
-    const req = hub.events.slice(before).find((e) => e.type === "approval.requested") as Extract<HubEvent, { type: "approval.requested" }>;
-    assert.equal(req.tool, "workiq-create_entity");
-    assert.deepEqual(hub.acts["comms-writer"], item, "the dashboard knows which item the writer acts on");
-    assert.equal((await post(`/api/approvals/${req.id}`, { decision: "approve" })).status, 200);
-    await done;
-
-    // A rejection carries the user's reason to the dashboard.
-    const before2 = hub.events.length;
-    const second = await hub.act("comms-writer", item, "Trả lời lần 2");
-    for (let i = 0; i < 200 && !hub.events.slice(before2).some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
-    const req2 = hub.events.slice(before2).find((e) => e.type === "approval.requested") as { id: string };
-    assert.equal((await post(`/api/approvals/${req2.id}`, { decision: "reject", feedback: "x" })).status, 200);
-    await second.done;
-    assert.ok(hub.events.slice(before2).some((e) => e.type === "approval.resolved" && e.decision === "reject" && e.feedback === "x"));
-    assert.equal(hub.mode, "act");
-    assert.ok(hub.events.length > before && hub.events[0].type === "agent.started", "brief events kept, act appended");
-    assert.ok(hub.events.some((e) => e.type === "action.result" && e.link));
-    assert.equal(hub.report, report, "an act run does not replace the brief report");
-  } finally {
-    server.close();
-  }
-});
-
-test("server: qa run saves its report in its own dir; files served only from there, with a no-script CSP", async () => {
-  const { hub, server, post, base } = await start("brief-ok");
-  try {
-    assert.equal((await post("/api/qa", { url: "file:///etc/passwd", criteria: "a" })).status, 400);
-    assert.equal((await post("/api/qa", { url: "http://127.0.0.1:4317/report", criteria: " \n " })).status, 400);
-    const { done } = await hub.startQa("http://127.0.0.1:4317/report", "- Mục cần xử lý nằm đầu báo cáo\n- Link mở tab mới\n- Footer ghi AI Credits");
-    await done;
-    assert.equal(hub.mode, "qa");
-    assert.equal(hub.status, "done");
-    const qa = hub.qa!;
-    assert.match(qa.dir, /^qa-\d{4}-\d{2}-\d{2}-\d{6}-mock$/);
-    assert.deepEqual(qa.report.result?.criteria.map((c) => c.status), ["pass", "fail", "pass"]);
-    assert.equal(hub.report, null, "a qa run does not make a brief report");
-
-    const page = await fetch(`${base}/qa/${qa.dir}/`);
-    assert.equal(page.status, 200);
-    assert.match(page.headers.get("content-security-policy")!, /default-src 'none'/);
-    assert.match(await page.text(), /Có tiêu chí không đạt/);
-    for (const bad of [`/qa/${qa.dir}/..%2F..%2Fpackage.json`, "/qa/..%2F/x", "/qa/brief/index.html", `/qa/${qa.dir}/nope.png`]) {
-      assert.equal((await fetch(base + bad)).status, 404, bad);
-    }
-  } finally {
-    server.close();
-  }
-});
-
-test("server: acceptance criteria from a work item (ac-reader, read-only) for the qa form", async () => {
-  const { hub, server, post } = await start("brief-ok");
-  try {
-    for (const bad of [0, -1, 1.5, "12"]) assert.equal((await post("/api/qa/criteria", { workItem: bad })).status, 400, String(bad));
-    const ac = hub.agents.find((a) => a.name === "ac-reader")!;
-    assert.deepEqual(ac.readTools, ["ado-wit_work_item"]);
-    assert.equal(ac.kind, "reader");
-    const { done } = await hub.startCriteria(1234);
-    await done;
-    assert.equal(hub.mode, "ac");
-    assert.equal(hub.ac?.workItem, 1234);
-    assert.equal(hub.ac?.criteria.length, 3);
-    assert.equal(hub.report, null, "no brief report from it");
-    assert.equal(hub.state().agents.find((a) => a.name === "ac-reader")?.output, "criteria", "the meter adds it on top of the brief");
-  } finally {
-    server.close();
-  }
-});
-
-test("server: stop rejects pending approvals and ends the run as stopped", async () => {
+test("server: stop ends the run as stopped", async () => {
   const { hub, server } = await start("brief-ok");
   try {
     const { done } = await hub.start("check việc");
-    for (let i = 0; i < 200 && !hub.events.some((e) => e.type === "approval.requested"); i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 200 && !hub.events.some((e) => e.type === "tool.started"); i++) await new Promise((r) => setTimeout(r, 20));
     await hub.stop();
     await done;
     assert.equal(hub.status, "stopped");
-    const resolved = hub.events.find((e) => e.type === "approval.resolved");
-    assert.ok(!resolved || resolved.decision === "reject", "stop never approves");
+    assert.ok(!hub.events.some((e) => e.type === "agent.result" && e.agent === "cloud-reader"), "the rest of the run did not play");
   } finally {
     server.close();
   }
@@ -218,7 +127,7 @@ test("server: auth in mock runtime calls nothing real; dashboard files served wi
 
     const page = await fetch(`${base}/`);
     assert.equal(page.status, 200);
-    assert.match(page.headers.get("content-security-policy")!, /frame-ancestors 'self'/, "other sites cannot frame the approve buttons");
+    assert.match(page.headers.get("content-security-policy")!, /frame-ancestors 'self'/, "other sites cannot frame the dashboard");
     const js = await fetch(`${base}/assets/app.js`);
     assert.match(js.headers.get("content-type")!, /javascript/);
     assert.equal(await (await fetch(`${base}/some/route`)).text(), "<!doctype html><title>hub</title>", "SPA fallback");

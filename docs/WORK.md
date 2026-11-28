@@ -125,18 +125,6 @@ Ngân sách: runtime bắt buộc `maxAiCredits >= 30` mỗi session, nên 4 age
 (mặc định). Đây là trần mềm, không phải số tiêu thực tế. Kiểm tra số credit ở footer báo cáo với trang billing GitHub: code đang giả định
 `1 AI Credit = 1e9 nano-AIU` (event `session.usage_checkpoint`). Sai thì ghi vào work-feedback.md.
 
-## 5b. Playwright MCP (smoke, không tốn AI Credits)
-
-```powershell
-npx -y @playwright/mcp@0.0.86 install-browser ffmpeg   # 1 lần: FFmpeg để quay video
-pnpm playwright-smoke                                    # Chrome hệ thống
-$env:PLAYWRIGHT_BROWSER = "msedge"; pnpm playwright-smoke # nếu máy không có Chrome
-```
-
-Script mở một trang mẫu (dữ liệu tự tạo) qua `127.0.0.1`, chụp ảnh, quay video, lưu trace vào
-`reports/playwright-smoke/`. Kết quả mong đợi: dòng cuối `Smoke Playwright: ok`, có `smoke.png`, `smoke.webm`,
-`traces/`, `index.html` (báo cáo nghiệm thu dựng từ các file này). Lỗi tải browser/FFmpeg (proxy công ty): ghi thông báo lỗi vào `docs/work-feedback.md`.
-
 ## 5c. Dashboard (Phase 2)
 
 ```powershell
@@ -148,47 +136,19 @@ pnpm dashboard          # build apps/web rồi mở server; vào http://127.0.0.
   `reports/brief-<ngày>.html` và audit.
 - Tab **Đăng nhập** kiểm `gh auth status` và `az account get-access-token` (ADO dùng `ADO_AZURE_CONFIG_DIR`),
   không tốn credit. Work IQ chỉ biết khi chạy.
-- Ctrl+C trong terminal để tắt. Nút **Dừng** dừng lượt chạy; yêu cầu duyệt đang chờ bị từ chối.
+- Ctrl+C trong terminal để tắt. Nút **Dừng** dừng lượt chạy.
 - Không chụp màn hình dashboard vào repo (có dữ liệu thật). Chỉ ghi cấu trúc vào work-feedback.
 
-## 5d. Agent ghi (Phase 3)
+## 5d. Đọc một work item (wit-reader)
 
-Ba agent ghi: `comms-writer` (gửi tin Teams qua Work IQ), `board-writer` (comment / cập nhật work item ADO),
-`code-writer` (comment, branch, PR GitHub). Agent ghi không đọc mail, chat, board hay code: chỉ nhận một mục
-trong báo cáo check việc mà người dùng chọn. **Mọi tool ghi chờ duyệt trên dashboard**, kèm đầy đủ tham số.
+```powershell
+pnpm wit 1234   # số work item do người dùng chọn
+```
 
-1. Tên tool ghi chưa kiểm ở Work (`docs/mcp-tools.md` lấy với header chỉ-đọc nên không có tool ghi ADO/GitHub).
-   Lấy tên thật, không gửi prompt, không tốn credit:
-   ```powershell
-   $env:AGENTHUB_RUNTIME = "copilot"
-   pnpm list-tools --writers   # ghi docs/mcp-tools-writers.md
-   ```
-   So với `writeTools` / `readTools` của writer trong `packages/core/src/agents.ts`; tên nào không có thì ghi vào
-   work-feedback (Home sửa). Tên sai thì agent không thấy tool đó và gate từ chối: an toàn, nhưng không làm được việc.
-2. Dùng: chạy check việc → tab **Việc cần làm** → chọn mục (nhóm "Cần bạn xử lý", hoặc mở "Mục khác có agent ghi")
-   → **Giao việc** → sửa lời giao → **Soạn**. Tab **Duyệt** tự mở khi agent muốn gọi tool ghi. **Duyệt = gửi thật.**
-   Từ chối (kèm lý do) thì agent dừng, không thử cách khác. Kết quả hiện trên mục đã giao, trên node writer và ở
-   "Đã xử lý" của tab Duyệt (quyết định, giờ, lý do, tham số).
-   board-writer chỉ được `wit_work_item_comment_write` action `add`/`update` và `wit_work_item_write` action `update`
-   (không tạo work item); action khác bị gate từ chối trước khi tới hàng duyệt.
-   Brief không có mục ADO: mở **Giao theo số work item** (cuối tab Việc cần làm), nhập số + lời giao → **Soạn**.
-   Sau một lần Từ chối, mọi tool ghi khác của agent đó trong cùng lượt bị gate chặn (không hỏi lại).
-   comms-writer cần người nhận trong lời giao (email); thiếu thì nó không soạn và nói rõ trên mục.
-3. Mỗi lần giao việc là một session riêng (tối thiểu 30 AI Credits theo giới hạn runtime; dùng thực tế thường ít hơn).
-
-## 5e. Nghiệm thu (Phase 4)
-
-Tab **Nghiệm thu** trên dashboard: nhập URL trang cần kiểm và tiêu chí (mỗi dòng một tiêu chí) → **Chạy nghiệm thu**.
-Agent `qa` mở trang bằng Playwright (headless), kiểm từng tiêu chí, quay video (cần FFmpeg, §5b), chụp ảnh, lưu trace.
-Kết quả: `reports/qa-<thời gian>/index.html` (mở từ link trên tab, hoặc mở file trực tiếp), cùng thư mục có ảnh, `qa.webm`,
-`traces/` (`npx playwright show-trace <file>`).
-
-- Tiêu chí lấy từ work item: nhập số work item → **Lấy tiêu chí** (agent `ac-reader`, chỉ đọc `wit_work_item`) →
-  **Dùng các tiêu chí này**. Runtime gọi thẳng tool và tách trường bằng code (nguyên văn, thường 0 credit); Chi tiết
-  của node ghi "Đọc thẳng trường Acceptance Criteria". Gọi thẳng lỗi thì model đọc (một session, trần 30 AI Credits).
-- Chỉ mở được đúng origin của URL đã nhập. Không chạy JS tuỳ ý, không tải file lên, không mở tab khác.
-- Không nhập mật khẩu hay tài khoản thật vào trang được kiểm. Chỉ kiểm trang local / staging.
-- Một lượt là một session (trần 30 AI Credits theo giới hạn runtime).
+Runtime gọi thẳng `wit_work_item` action `get` (không qua model, thường 0 AI Credits) rồi tách các trường bằng code:
+title, type, state, priority, story point, giờ ước tính / còn lại / đã làm, người được giao, iteration, hạn, tag,
+description, acceptance criteria, link. Dòng đầu in "Đọc thẳng work item…" hoặc "Không đọc thẳng được work item: để
+model đọc" (khi đó model đọc thay, một session, trần 30 AI Credits). Kết quả chỉ in ra terminal: không chép vào repo.
 
 ## 6. Gửi phản hồi về Home
 

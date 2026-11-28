@@ -7,13 +7,12 @@ export interface RunInput {
   agents: AgentSpec[];
   /** Total AI Credit budget for this run. */
   budget: number;
-  /** Mock runtime only: scenario to replay instead of cfg.scenario (writer runs use `act-<agent>`). */
+  /** Mock runtime only: scenario to replay instead of cfg.scenario (wit-reader uses `wit-reader`). */
   scenario?: string;
 }
 
 export interface AgentRuntime {
   run(input: RunInput): AsyncIterable<HubEvent>;
-  resolveApproval(id: string, decision: "approve" | "reject", feedback?: string): void;
   stop(): Promise<void>;
 }
 
@@ -53,26 +52,5 @@ export class EventQueue<T> implements AsyncIterable<T> {
         yield r.value;
       }
     }
-  }
-}
-
-/** Holds approval requests until the user decides. Shared by every runtime. */
-export class ApprovalBox {
-  private pending = new Map<string, (d: { decision: "approve" | "reject"; feedback?: string }) => void>();
-
-  wait(id: string) {
-    return new Promise<{ decision: "approve" | "reject"; feedback?: string }>((res) => this.pending.set(id, res));
-  }
-
-  resolve(id: string, decision: "approve" | "reject", feedback?: string) {
-    const res = this.pending.get(id);
-    if (!res) throw new Error(`Không có approval đang chờ: ${id}`);
-    this.pending.delete(id);
-    res({ decision, feedback });
-  }
-
-  /** On stop: everything still pending is rejected (never silently approved). */
-  rejectAll(reason: string) {
-    for (const id of [...this.pending.keys()]) this.resolve(id, "reject", reason);
   }
 }

@@ -1,6 +1,6 @@
 import type { SessionEvent } from "@github/copilot-sdk";
 import type { BriefItem } from "./brief.ts";
-import type { QaResult } from "./qa.ts";
+import type { WorkItem } from "./wit.ts";
 
 /** Internal event stream. Every runtime (mock / byok / copilot) emits only these. */
 export type HubEvent =
@@ -8,18 +8,11 @@ export type HubEvent =
   | { type: "agent.completed"; agent: string; durationMs?: number; tokens?: number }
   | { type: "agent.failed"; agent: string; error: string }
   | { type: "agent.result"; agent: string; items: BriefItem[] }
-  /** Writer agents (Phase 3): what was done, or why not. */
-  | { type: "action.result"; agent: string; summary: string; link: string | null }
-  /** ac-reader (Phase 4): acceptance criteria of one work item. */
-  | { type: "criteria.result"; agent: string; title: string; criteria: string[] }
-  /** The qa agent (Phase 4): pass/fail per acceptance criterion. */
-  | { type: "qa.result"; agent: string; result: QaResult }
-  /** `args` is set by the mock runtime only (scenario files); the SDK runtime shows args on approval.requested. */
+  /** wit-reader: every field of one ADO work item. */
+  | { type: "workitem.result"; agent: string; item: WorkItem }
+  /** `args` is set by the mock runtime only (scenario files). */
   | { type: "tool.started"; agent: string; server: string; tool: string; callId: string; args?: unknown }
   | { type: "tool.completed"; callId: string; ok: boolean; error?: string }
-  | { type: "approval.requested"; id: string; agent: string; tool: string; args: unknown }
-  /** `feedback`: the reason the user typed (or the UI default on reject), shown on the dashboard. */
-  | { type: "approval.resolved"; id: string; decision: "approve" | "reject"; feedback?: string }
   | { type: "usage"; agent?: string; usedAiCredits: number; maxAiCredits: number }
   | { type: "message"; agent: string; text: string };
 
@@ -59,8 +52,8 @@ export function mapSdkEvent(agent: string, ev: SessionEvent): HubEvent | null {
       // ponytail: assumes 1 AI Credit = 1e9 nano-AIU. [Work] verify against the GitHub billing page.
       return { type: "usage", agent, usedAiCredits: ev.data.totalNanoAiu / 1e9, maxAiCredits: 0 };
     case "assistant.message":
-      // The structured answer ({"summary":...}) arrives as a message too; it is shown from its own event
-      // (action.result, agent.result, ...). Found at Work run 11: raw JSON under "Thông báo".
+      // The structured answer ({"items":...}) arrives as a message too; it is shown from its own event
+      // (agent.result, workitem.result). Found at Work run 11: raw JSON under "Thông báo".
       return ev.data.content && !isJsonObject(ev.data.content) ? { type: "message", agent, text: ev.data.content } : null;
     default:
       return null;

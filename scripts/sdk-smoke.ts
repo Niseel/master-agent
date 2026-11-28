@@ -43,7 +43,7 @@ const session = await client.createSession({
     onPreToolUse: ({ toolName }) => {
       const { decision, reason } = decide(agent, toolName);
       console.log(`[gate] ${toolName} → ${decision} (${reason})`);
-      return { permissionDecision: decision === "ask" ? "deny" : decision, permissionDecisionReason: reason };
+      return { permissionDecision: decision, permissionDecisionReason: reason };
     },
   },
   onPermissionRequest: (req) => {

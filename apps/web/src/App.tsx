@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { hint } from "@agenthub/core/hints";
 import * as api from "./api.ts";
 import { startTour } from "./tour.ts";
 import { Graph, SERVER_LABEL, STATUS_LABEL, type Selection } from "./Graph.tsx";
-import type { BriefItem } from "@agenthub/core/brief";
-import { authState, derive, outcomeText, pending, sameItem, todoGroups, workItemItem, writerOutcome, type Approval, type Call, type Snapshot, type View, type WriterOutcome } from "./state.ts";
+import { authState, derive, type Call, type Snapshot, type View } from "./state.ts";
 
 const secs = (ms?: number) => (ms === undefined ? "–" : `${(ms / 1000).toFixed(1)}s`);
 const AUTH_LABEL = { ok: "Đã đăng nhập", error: "Lỗi", mock: "Giả lập", unknown: "Chưa rõ" } as const;
 
-type Tab = "detail" | "todo" | "qa" | "approvals" | "auth";
+type Tab = "detail" | "auth";
 
 export function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -28,10 +27,9 @@ export function App() {
         state: (s) => setSnap(s),
         hub: (e) => setSnap((s) => s && { ...s, events: [...s.events, e] }),
         run: (r) => {
-          // An act run (one writer) appends to the brief: keep its events and report.
-          const fresh = r.status === "running" && r.mode === "brief";
-          setSnap((s) => s && { ...s, status: r.status, mode: r.mode, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), qa: r.qa ?? s.qa, acts: r.acts ?? s.acts, ac: r.ac ?? s.ac, events: fresh ? [] : s.events });
-          if (r.report && r.mode === "brief") setReportKey(Date.now());
+          const fresh = r.status === "running";
+          setSnap((s) => s && { ...s, status: r.status, prompt: r.prompt ?? s.prompt, report: r.report ?? (fresh ? null : s.report), events: fresh ? [] : s.events });
+          if (r.report) setReportKey(Date.now());
         },
         connection: setConnected,
       }),
@@ -51,15 +49,7 @@ export function App() {
   useEffect(() => void checkAuth(), [checkAuth]);
 
   const view = useMemo(() => (snap ? derive(snap.agents, snap.events) : null), [snap]);
-  const waiting = view ? pending(view) : [];
   const running = snap?.status === "running";
-
-  // Bring the approval queue forward when a new request arrives.
-  const lastPending = useRef(0);
-  useEffect(() => {
-    if (waiting.length > lastPending.current) setTab("approvals");
-    lastPending.current = waiting.length;
-  }, [waiting.length]);
 
   const act = async (fn: () => Promise<unknown>) => {
     setError(null);
@@ -149,49 +139,12 @@ export function App() {
             <button role="tab" aria-selected={tab === "detail"} onClick={() => setTab("detail")}>
               Chi tiết
             </button>
-            <button role="tab" aria-selected={tab === "todo"} onClick={() => setTab("todo")}>
-              Việc cần làm
-            </button>
-            <button role="tab" aria-selected={tab === "qa"} onClick={() => setTab("qa")}>
-              Nghiệm thu
-            </button>
-            <button role="tab" aria-selected={tab === "approvals"} onClick={() => setTab("approvals")}>
-              Duyệt{waiting.length ? <span className="badge">{waiting.length}</span> : null}
-            </button>
             <button role="tab" aria-selected={tab === "auth"} onClick={() => setTab("auth")}>
               Đăng nhập
             </button>
           </nav>
           <div className="tab-body">
             {tab === "detail" && <Detail snap={snap} view={view} selection={selection} />}
-            {tab === "todo" && (
-              <Todo
-                snap={snap}
-                view={view}
-                running={running}
-                onAct={(agent, item, instruction) =>
-                  act(async () => {
-                    await api.actOn(agent, item, instruction);
-                    setSelection({ kind: "agent", name: agent });
-                  })
-                }
-                onShowApprovals={() => setTab("approvals")}
-              />
-            )}
-            {tab === "qa" && (
-              <Qa
-                snap={snap}
-                running={running}
-                onReadCriteria={(id) => act(() => api.readCriteria(id))}
-                onRun={(url, criteria) =>
-                  act(async () => {
-                    await api.startQa(url, criteria);
-                    setSelection({ kind: "agent", name: "qa" });
-                  })
-                }
-              />
-            )}
-            {tab === "approvals" && <Approvals view={view} onDecide={(id, d, f) => act(() => api.decide(id, d, f))} />}
             {tab === "auth" && <AuthPanel auth={auth} view={view} snap={snap} busy={authBusy} onCheck={checkAuth} />}
           </div>
         </aside>
@@ -290,7 +243,7 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
       <dl>
         <dt>Agent</dt>
         <dd>
-          <code>{info.name}</code> ({info.kind === "reader" ? "chỉ đọc" : info.kind === "tester" ? "trình duyệt, chỉ trang được kiểm" : "có ghi, cần duyệt"})
+          <code>{info.name}</code> (chỉ đọc)
         </dd>
         <dt>Trạng thái</dt>
         <dd>{STATUS_LABEL[av.status]}</dd>
@@ -300,32 +253,13 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
         <dd>{av.credits?.toFixed(2) ?? "–"}</dd>
         <dt>Token</dt>
         <dd>{av.tokens ?? "–"}</dd>
-        {info.kind === "reader" && (
-          <>
-            <dt>Mục</dt>
-            <dd>{av.items}</dd>
-          </>
-        )}
+        <dt>Mục</dt>
+        <dd>{av.items}</dd>
       </dl>
       {av.error && (
         <div className="problem">
           <div className="call-error">{av.error}</div>
           {av.hint && <div className="hint">→ {av.hint}</div>}
-        </div>
-      )}
-      {info.kind === "writer" && outcomeText(writerOutcome(view, info.name)) && (
-        <div className="action-result">
-          <b>Lượt gần nhất:</b> {outcomeText(writerOutcome(view, info.name))}
-        </div>
-      )}
-      {av.action && (
-        <div className="action-result">
-          <b>Kết quả:</b> {av.action.summary}{" "}
-          {av.action.link && /^https?:\/\//.test(av.action.link) && (
-            <a href={av.action.link} target="_blank" rel="noopener noreferrer">
-              Mở ↗
-            </a>
-          )}
         </div>
       )}
       <h4>Tool đã gọi ({av.calls.length})</h4>
@@ -334,68 +268,6 @@ function Detail({ snap, view, selection }: { snap: Snapshot; view: View; selecti
         <>
           <h4>Thông báo</h4>
           <ul className="messages">{av.messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function ApprovalCard({ ap, onDecide }: { ap: Approval; onDecide: (id: string, d: "approve" | "reject", feedback?: string) => void }) {
-  const [feedback, setFeedback] = useState("");
-  return (
-    <li className="approval">
-      <div>
-        <b>{ap.agent}</b> xin gọi <code>{ap.tool}</code>
-      </div>
-      <pre>{JSON.stringify(ap.args, null, 2)}</pre>
-      <label>
-        Lý do (gửi lại cho agent nếu từ chối)
-        <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={2} />
-      </label>
-      <div className="row">
-        <button className="primary" onClick={() => onDecide(ap.id, "approve", feedback || undefined)}>
-          Duyệt
-        </button>
-        <button className="danger" onClick={() => onDecide(ap.id, "reject", feedback || "Người dùng từ chối")}>
-          Từ chối
-        </button>
-      </div>
-    </li>
-  );
-}
-
-function Approvals({ view, onDecide }: { view: View; onDecide: (id: string, d: "approve" | "reject", feedback?: string) => void }) {
-  const waiting = pending(view);
-  const done = view.approvals.filter((a) => a.decision);
-  return (
-    <div className="detail">
-      <p className="muted">
-        Mọi tool ghi chờ bạn duyệt, kèm đầy đủ tham số: đây là nội dung sẽ được gửi đi. Nội dung do agent soạn từ dữ liệu mail/chat, đọc kỹ trước khi duyệt.
-        Yêu cầu từ agent chỉ-đọc là bất thường.
-      </p>
-      {waiting.length === 0 && <p>Không có yêu cầu nào đang chờ.</p>}
-      <ul className="approvals">{waiting.map((ap) => <ApprovalCard key={ap.id} ap={ap} onDecide={onDecide} />)}</ul>
-      {done.length > 0 && (
-        <>
-          <h4>Đã xử lý</h4>
-          <ul className="approvals done">
-            {[...done].reverse().map((a, k) => (
-              <li key={`${a.id}-${k}`} className={`approval-done ${a.decision}`}>
-                <div className="row">
-                  <b>{a.decision === "approve" ? "✓ Đã duyệt" : "✗ Đã từ chối"}</b>
-                  <span className="muted">{clock(a.resolvedAt)}</span>
-                </div>
-                <div>
-                  {a.agent} → <code>{a.tool}</code>
-                </div>
-                {a.feedback && <div className="reason">Lý do: {a.feedback}</div>}
-                <details>
-                  <summary>Tham số</summary>
-                  <pre>{JSON.stringify(a.args, null, 2)}</pre>
-                </details>
-              </li>
-            ))}
-          </ul>
         </>
       )}
     </div>
@@ -435,323 +307,6 @@ function AuthPanel({ auth, view, snap, busy, onCheck }: { auth: api.AuthStatus[]
           );
         })}
       </ul>
-    </div>
-  );
-}
-
-const SOURCE_LABEL: Record<BriefItem["source"], string> = { outlook: "Outlook", teams: "Teams", ado: "Azure DevOps", github: "GitHub", azure: "Azure" };
-
-const clock = (ms?: number) => (ms === undefined ? "" : new Date(ms).toLocaleTimeString("vi-VN", { hour12: false }));
-
-/** Where a writer's last run stands, shown on its item whether the form is open or not (Work run 10). */
-function Outcome({ o, onShowApprovals }: { o: WriterOutcome; onShowApprovals: () => void }) {
-  if (o.kind === "idle") return null;
-  const reasons = (list: Approval[]) => [...new Set(list.map((a) => a.feedback).filter(Boolean))].join("; ");
-  return (
-    <div className={`outcome ${o.kind}`} role="status">
-      {o.kind === "running" && <>Đang soạn…</>}
-      {o.kind === "waiting" && (
-        <>
-          Chờ bạn duyệt {o.pending} yêu cầu.{" "}
-          <button type="button" className="link" onClick={onShowApprovals}>
-            Mở tab Duyệt
-          </button>
-        </>
-      )}
-      {o.kind === "failed" && (
-        <>
-          <b>Lỗi, không gửi gì:</b> {o.error}
-          {o.hint && <div className="hint">→ {o.hint}</div>}
-        </>
-      )}
-      {o.kind === "nothing-sent" && (
-        <>
-          <b>Không có gì được gửi</b>
-          {o.rejected.length > 0 && (
-            <>
-              {" "}
-              (bạn đã từ chối {o.rejected.length} yêu cầu{reasons(o.rejected) ? `: ${reasons(o.rejected)}` : ""})
-            </>
-          )}
-          .{o.blocked > 0 && <> Gate chặn {o.blocked} lần gọi (xem Chi tiết của agent).</>}
-          {o.summary && <div>Agent: {o.summary}</div>}
-        </>
-      )}
-      {o.kind === "sent" && (
-        <>
-          <b>Đã gửi:</b> {o.sent.map((a) => a.tool).join(", ")}
-          {o.rejected.length > 0 && <> · từ chối {o.rejected.length}</>}
-          {o.summary && <div>{o.summary}</div>}
-          {o.link && /^https?:\/\//.test(o.link) && (
-            <a href={o.link} target="_blank" rel="noopener noreferrer">
-              Mở ↗
-            </a>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Brief items that can be handed to the writer for their source (Phase 3). */
-function Todo({
-  snap,
-  view,
-  running,
-  onAct,
-  onShowApprovals,
-}: {
-  snap: Snapshot;
-  view: View;
-  running: boolean;
-  onAct: (agent: string, item: BriefItem, instruction: string) => void;
-  onShowApprovals: () => void;
-}) {
-  const [open, setOpen] = useState<number | null>(null);
-  const [instruction, setInstruction] = useState("");
-  const byNumber = <ByWorkItem snap={snap} view={view} running={running} onAct={onAct} onShowApprovals={onShowApprovals} />;
-  if (!snap.report) {
-    return (
-      <div className="detail">
-        <p className="muted">Chạy check việc trước: các mục cần bạn xử lý hiện ở đây.</p>
-        {byNumber}
-      </div>
-    );
-  }
-  const groups = todoGroups(snap.report.items, snap.writerFor);
-
-  const row = ({ item, i }: { item: BriefItem; i: number }) => {
-    const writer = snap.agents.find((a) => a.name === snap.writerFor[item.source]);
-    const acted = writer && snap.acts[writer.name] && sameItem(snap.acts[writer.name], item);
-    return (
-      <li key={i} className={`todo-item ${item.priority}`}>
-        <div className="row">
-          <span className="chip">{SOURCE_LABEL[item.source]}</span>
-          {snap.report?.isNew?.[i] && <span className="chip new" title={`Không có trong check việc ${snap.report.previousDate}`}>Mới</span>}
-          <b>{item.title}</b>
-        </div>
-        <div className="muted">{item.summary}</div>
-        {item.suggestedAction && <div className="hint">Gợi ý: {item.suggestedAction}</div>}
-        {!writer ? (
-          <div className="muted">Chưa có agent ghi cho nguồn này.</div>
-        ) : open === i ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (instruction.trim()) onAct(writer.name, item, instruction.trim());
-            }}
-          >
-            <label>
-              Việc giao cho {writer.displayName} (<code>{writer.name}</code>)
-              <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={2000} autoFocus placeholder={writer.name === "comms-writer" ? COMMS_HINT : undefined} />
-            </label>
-            <div className="row">
-              <button type="submit" className="primary" disabled={running || !instruction.trim()}>
-                Soạn ▶
-              </button>
-              <button type="button" onClick={() => setOpen(null)}>
-                Đóng
-              </button>
-            </div>
-          </form>
-        ) : (
-          <button
-            disabled={running}
-            onClick={() => {
-              setOpen(i);
-              setInstruction(item.suggestedAction ?? "");
-            }}
-          >
-            {acted ? "Giao lại" : "Giao việc"}: {writer.displayName}
-          </button>
-        )}
-        {acted && <Outcome o={writerOutcome(view, writer.name)} onShowApprovals={onShowApprovals} />}
-      </li>
-    );
-  };
-
-  return (
-    <div className="detail">
-      <p className="muted">Giao một mục cho agent ghi. Agent soạn nội dung, rồi chờ bạn duyệt ở tab Duyệt trước khi gửi.</p>
-      <h4>Cần bạn xử lý ({groups.action.length})</h4>
-      {groups.action.length === 0 && <p>Không có mục nào cần xử lý.</p>}
-      <ul className="todo">{groups.action.map(row)}</ul>
-      {groups.other.length > 0 && (
-        // Open by default when one of its items was handed to a writer, so the outcome stays in view.
-        <details className="todo-other" open={groups.other.some(({ item }) => Object.values(snap.acts).some((x) => sameItem(x, item))) || undefined}>
-          <summary>Mục khác có agent ghi ({groups.other.length})</summary>
-          <ul className="todo">{groups.other.map(row)}</ul>
-        </details>
-      )}
-      {byNumber}
-    </div>
-  );
-}
-
-const COMMS_HINT = "Ghi rõ người nhận (email) và nội dung cần hỏi hoặc chốt";
-
-/** board-writer on a work item number the user types, without a brief item (Work run 11: briefs often have no ADO item). */
-function ByWorkItem({
-  snap,
-  view,
-  running,
-  onAct,
-  onShowApprovals,
-}: {
-  snap: Snapshot;
-  view: View;
-  running: boolean;
-  onAct: (agent: string, item: BriefItem, instruction: string) => void;
-  onShowApprovals: () => void;
-}) {
-  const [id, setId] = useState("");
-  const [instruction, setInstruction] = useState("");
-  const writer = snap.agents.find((a) => a.name === snap.writerFor.ado);
-  if (!writer) return null;
-  const acted = snap.acts[writer.name];
-  const m = acted?.title.match(/^Work item #(\d+)$/);
-  const mine = m ? sameItem(acted, workItemItem(Number(m[1]))) : false;
-  return (
-    <details className="todo-other" open={mine || undefined}>
-      <summary>Giao theo số work item ({writer.displayName})</summary>
-      <form
-        className="qa-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (Number(id) > 0 && instruction.trim()) onAct(writer.name, workItemItem(Number(id)), instruction.trim());
-        }}
-      >
-        <label>
-          Số work item
-          <input type="number" min={1} step={1} value={id} onChange={(e) => setId(e.target.value)} />
-        </label>
-        <label>
-          Việc giao cho {writer.displayName} (<code>{writer.name}</code>)
-          <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={3} maxLength={2000} placeholder="Ví dụ: thêm comment đã chốt với team" />
-        </label>
-        <button type="submit" className="primary" disabled={running || !(Number(id) > 0) || !instruction.trim()}>
-          Soạn ▶
-        </button>
-      </form>
-      {mine && (
-        <div>
-          <b>{acted.title}</b>
-          <Outcome o={writerOutcome(view, writer.name)} onShowApprovals={onShowApprovals} />
-        </div>
-      )}
-    </details>
-  );
-}
-
-const QA_STATUS = { pass: "Đạt", fail: "Không đạt", blocked: "Không kiểm được" } as const;
-const QA_SAMPLE = "Mục \"Cần bạn xử lý\" nằm đầu báo cáo\nLink trong báo cáo mở tab mới\nFooter ghi số AI Credits đã dùng";
-
-/** Phase 4: acceptance test of one page with Playwright; the report (screenshots, video, trace) opens from /qa/<dir>/. */
-function Qa({
-  snap,
-  running,
-  onRun,
-  onReadCriteria,
-}: {
-  snap: Snapshot;
-  running: boolean;
-  onRun: (url: string, criteria: string) => void;
-  onReadCriteria: (workItem: number) => void;
-}) {
-  const [url, setUrl] = useState(() => `${location.origin}/report`);
-  const [criteria, setCriteria] = useState(QA_SAMPLE);
-  const [workItem, setWorkItem] = useState("");
-  const ac = snap.ac;
-  const qa = snap.qa;
-  const rows = qa ? qa.criteria.map((c, i) => qa.result?.criteria[i] ?? { criterion: c, status: "blocked" as const, evidence: qa.error ?? "Không có kết quả" }) : [];
-  return (
-    <div className="detail">
-      <p className="muted">
-        Agent mở trang bằng Playwright (headless), kiểm từng tiêu chí, quay video, chụp ảnh, lưu trace. Chỉ mở được đúng origin của URL này; không chạy JS
-        tuỳ ý, không tải file lên.
-      </p>
-      <form
-        className="qa-form ac-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (Number(workItem) > 0) onReadCriteria(Number(workItem));
-        }}
-      >
-        <label>
-          Lấy tiêu chí từ work item ADO (đọc trường Acceptance Criteria, chỉ đọc)
-          <div className="row">
-            <input type="number" min={1} step={1} placeholder="Số work item" value={workItem} onChange={(e) => setWorkItem(e.target.value)} />
-            <button type="submit" disabled={running || !(Number(workItem) > 0)}>
-              Lấy tiêu chí
-            </button>
-          </div>
-        </label>
-        {ac && (
-          <div className={`outcome ${ac.error ? "failed" : "sent"}`}>
-            {ac.error ? (
-              <>
-                <b>Không lấy được tiêu chí #{ac.workItem}:</b> {ac.error}
-              </>
-            ) : (
-              <>
-                <b>
-                  #{ac.workItem} {ac.title}
-                </b>
-                : {ac.criteria.length} tiêu chí{" "}
-                {ac.criteria.length > 0 && (
-                  <button type="button" className="link" onClick={() => setCriteria(ac.criteria.join("\n"))}>
-                    Dùng các tiêu chí này
-                  </button>
-                )}
-                <ol>{ac.criteria.map((c, k) => <li key={k}>{c}</li>)}</ol>
-              </>
-            )}
-          </div>
-        )}
-      </form>
-      <form
-        className="qa-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onRun(url.trim(), criteria);
-        }}
-      >
-        <label>
-          Trang cần kiểm
-          <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />
-        </label>
-        <label>
-          Tiêu chí nghiệm thu (mỗi dòng một tiêu chí, tối đa 20)
-          <textarea rows={5} required value={criteria} onChange={(e) => setCriteria(e.target.value)} />
-        </label>
-        <button type="submit" className="primary" disabled={running || !url.trim() || !criteria.trim()}>
-          Chạy nghiệm thu ▶
-        </button>
-      </form>
-      {qa && (
-        <>
-          <h4>
-            Lần gần nhất: {rows.filter((r) => r.status === "pass").length}/{rows.length} đạt
-          </h4>
-          <p className="muted">{qa.url}</p>
-          {qa.result?.summary && <p>{qa.result.summary}</p>}
-          {qa.error && <p className="call-error">{qa.error}</p>}
-          <ul className="todo">
-            {rows.map((r, i) => (
-              <li key={i} className={`todo-item qa-${r.status}`}>
-                <div className="row">
-                  <span className={`chip qa-${r.status}`}>{QA_STATUS[r.status]}</span>
-                  <b>{qa.criteria[i]}</b>
-                </div>
-                <div className="muted">{r.evidence}</div>
-              </li>
-            ))}
-          </ul>
-          <a href={`/qa/${encodeURIComponent(qa.dir)}/`} target="_blank" rel="noopener">
-            Mở báo cáo nghiệm thu (ảnh, video, trace) ↗
-          </a>
-        </>
-      )}
     </div>
   );
 }

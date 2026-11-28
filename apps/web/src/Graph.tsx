@@ -1,7 +1,7 @@
 /** Flow graph: orchestrator -> agents -> MCP servers. Edges animate while a tool call is in flight, red after an error. */
 import { Background, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { outcomeText, writerOutcome, type AgentInfo, type NodeStatus, type View } from "./state.ts";
+import type { AgentInfo, NodeStatus, View } from "./state.ts";
 
 export const STATUS_LABEL: Record<NodeStatus, string> = {
   idle: "Chờ",
@@ -16,16 +16,15 @@ export const SERVER_LABEL: Record<string, string> = {
   ado: "Azure DevOps MCP",
   github: "GitHub MCP",
   azure: "Azure MCP",
-  playwright: "Playwright MCP",
 };
 
 export type Selection = { kind: "orchestrator" } | { kind: "agent"; name: string } | { kind: "server"; name: string };
 
-type HubNodeData = { title: string; subtitle: string; status: NodeStatus; meta: string; selected: boolean; writer?: boolean };
+type HubNodeData = { title: string; subtitle: string; status: NodeStatus; meta: string; selected: boolean };
 
 function HubNode({ data }: NodeProps<Node<HubNodeData>>) {
   return (
-    <div className={`node ${data.status}${data.selected ? " selected" : ""}${data.writer ? " writer" : ""}`}>
+    <div className={`node ${data.status}${data.selected ? " selected" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-title">{data.title}</div>
       <div className="node-sub">{data.subtitle}</div>
@@ -60,21 +59,19 @@ export function Graph(props: {
       id: "orchestrator",
       type: "hub",
       position: { x: 0, y: top },
-      data: { title: "Orchestrator", subtitle: `${agents.filter((a) => a.kind === "reader").length} agent đọc song song`, status: orchStatus, meta: "", selected: isSel({ kind: "orchestrator" }) },
+      data: { title: "Orchestrator", subtitle: `${agents.length} agent đọc song song`, status: orchStatus, meta: "", selected: isSel({ kind: "orchestrator" }) },
     },
   ];
   const edges: Edge[] = [];
   const seen = new Set<string>();
   agents.forEach((a, i) => {
     const av = view.agents[a.name];
-    const meta =
-      (a.kind === "writer" && outcomeText(writerOutcome(view, a.name))) ||
-      [av.calls.length ? `${av.calls.length} tool` : "", secs(av.durationMs), av.credits ? `${av.credits.toFixed(1)} cr` : ""].filter(Boolean).join(" · ");
+    const meta = [av.calls.length ? `${av.calls.length} tool` : "", secs(av.durationMs), av.credits ? `${av.credits.toFixed(1)} cr` : ""].filter(Boolean).join(" · ");
     nodes.push({
       id: `agent:${a.name}`,
       type: "hub",
       position: { x: 300, y: i * rowH },
-      data: { title: a.displayName, subtitle: a.kind === "writer" ? `${a.name} · ghi, cần duyệt` : a.kind === "tester" ? `${a.name} · trình duyệt, 1 trang` : a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }), writer: a.kind === "writer" },
+      data: { title: a.displayName, subtitle: a.name, status: av.status, meta, selected: isSel({ kind: "agent", name: a.name }) },
     });
     edges.push({
       id: `o>${a.name}`,

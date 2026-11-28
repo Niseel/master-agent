@@ -29,6 +29,3 @@ export function dropEmpty(items: BriefItem[]) {
 }
 export const droppedText = (n: number) => `Bỏ ${n} mục rỗng (không có tiêu đề và tóm tắt)`;
 
-/** What a writer agent returns (Phase 3). */
-export const ActionResult = z.object({ summary: z.string(), link: z.string().nullable() });
-export type ActionResult = z.infer<typeof ActionResult>;

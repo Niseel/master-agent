@@ -2,7 +2,7 @@
 import { driver, type DriveStep } from "driver.js";
 import { flushSync } from "react-dom";
 
-export type TourTab = "detail" | "todo" | "qa" | "approvals" | "auth";
+export type TourTab = "detail" | "auth";
 type Step = { el: string; tab?: TourTab; title: string; text: string };
 
 export const TOUR: Step[] = [
@@ -12,9 +12,6 @@ export const TOUR: Step[] = [
   { el: "auth", title: "Đăng nhập nguồn", text: "Mỗi chip là một nguồn (Outlook, Teams, ADO, GitHub, Azure). Xanh: đã đăng nhập hoặc đã gọi tool thành công. Bấm để xem chi tiết." },
   { el: "graph", title: "Sơ đồ agent", text: "Orchestrator, các agent và MCP server. Màu cho biết trạng thái. Bấm một node để xem từng lần gọi tool." },
   { el: "panel", tab: "detail", title: "Chi tiết", text: "Trạng thái, thời gian, credit, tool đã gọi (✓ / ✗ / ⛔ bị gate chặn) và thông báo của node đang chọn." },
-  { el: "panel", tab: "todo", title: "Việc cần làm", text: "Mục trong báo cáo có agent ghi: Giao việc → agent soạn nội dung. Cuối tab: Giao theo số work item cho agent cập nhật ADO." },
-  { el: "panel", tab: "approvals", title: "Duyệt", text: "Mọi tool ghi dừng ở đây kèm đủ tham số. Duyệt = gửi thật. Từ chối kèm lý do: agent không được gửi lại trong lượt đó." },
-  { el: "panel", tab: "qa", title: "Nghiệm thu", text: "Lấy tiêu chí từ trường Acceptance Criteria của work item, rồi agent Playwright mở trang, kiểm từng tiêu chí, chụp ảnh, quay video." },
   { el: "panel", tab: "auth", title: "Đăng nhập", text: "Kiểm nhanh từng nguồn, không tốn credit, không hiện token. Lỗi đăng nhập có gợi ý cách sửa." },
   { el: "report", title: "Báo cáo", text: "Báo cáo check việc hiện ở đây sau khi mọi agent xong. \"N mới so với <ngày>\": mục chưa có trong lần trước." },
 ];

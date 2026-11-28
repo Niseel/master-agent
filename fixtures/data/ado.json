@@ -49,9 +49,29 @@
       "change": "State New → Active; thêm 2 acceptance criteria",
       "url": "https://dev.azure.com/org/proj/_workitems/edit/1234",
       "fields": {
+        "System.Id": 1234,
+        "System.WorkItemType": "User Story",
         "System.Title": "Hoàn tiền một phần cho đơn hàng",
         "System.State": "Active",
+        "System.AssignedTo": {
+          "displayName": "Người dùng (tôi)",
+          "uniqueName": "me@example.com"
+        },
+        "System.IterationPath": "Orders\\Sprint 42",
+        "System.Tags": "payment; refund",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Scheduling.StoryPoints": 5,
+        "Microsoft.VSTS.Scheduling.OriginalEstimate": 16,
+        "Microsoft.VSTS.Scheduling.RemainingWork": 10,
+        "Microsoft.VSTS.Scheduling.CompletedWork": 6,
+        "Microsoft.VSTS.Scheduling.TargetDate": "2026-11-28T00:00:00Z",
+        "System.Description": "<div>Khách cần hoàn một phần tiền khi trả lại một số món trong đơn.</div><div>Áp dụng cho đơn đã thanh toán qua thẻ.</div>",
         "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>Trang đơn hàng có nút &quot;Hoàn tiền một phần&quot; với đơn đã thanh toán</li><li>Nhập số tiền lớn hơn số đã thanh toán thì báo lỗi, không cho gửi</li></ul><div>3. Hoàn tiền từ 2 triệu trở lên hiện nhãn &quot;Chờ kế toán duyệt&quot;<br></div><div>&nbsp;</div>"
+      },
+      "_links": {
+        "html": {
+          "href": "https://dev.azure.com/org/proj/_workitems/edit/1234"
+        }
       }
     },
     {

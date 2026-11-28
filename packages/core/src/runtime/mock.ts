@@ -2,29 +2,26 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
-import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
-import { AcResult, criteriaFromWorkItem, QaResult } from "../qa.ts";
+import { AgentResult, dropEmpty, droppedText } from "../brief.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
-import { AFTER_REJECT, audit, DENIED_PREFIX, decide, denyHint, stopAfterReject } from "../security.ts";
-import { ApprovalBox, type AgentRuntime, type RunInput } from "./index.ts";
+import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
+import { DIRECT_READ_OK, WorkItem, workItemFrom } from "../wit.ts";
+import type { AgentRuntime, RunInput } from "./index.ts";
 
 /** One line of fixtures/scenarios/*.jsonl */
 interface Step {
   delayMs?: number;
-  /** Replay only if the last approval in this run was approved / rejected. */
-  when?: "approved" | "rejected";
   event: HubEvent;
-  /** On a tool.completed step: the tool's result. Used for ac-reader's direct read, like the SDK runtime. */
+  /** On a tool.completed step: the tool's result. Used for wit-reader's direct read, like the SDK runtime. */
   result?: unknown;
 }
 
 /**
- * Replays a scenario file. Still runs the real approval gate and the real
- * BriefItem validation, so tests exercise the same rules as the SDK runtime.
+ * Replays a scenario file. Still runs the real tool gate and the real result validation, so tests exercise the same
+ * rules as the SDK runtime.
  */
 export class MockRuntime implements AgentRuntime {
-  private approvals = new ApprovalBox();
   private stopped = false;
   constructor(private cfg: HubConfig) {}
 
@@ -41,15 +38,11 @@ export class MockRuntime implements AgentRuntime {
     const callAgent = new Map<string, string>();
     // Like sdk.ts: an agent ends with agent.failed OR agent.completed, never both.
     const failed = new Set<string>();
-    let lastApproval: "approved" | "rejected" | undefined;
-    const rejected = new Set<string>();
-
-    // ac-reader agents whose criteria came from the tool result (directRead): the scenario's model answer is skipped.
+    // wit-reader agents whose work item came from the tool result (directRead): the scenario's model answer is skipped.
     const direct = new Set<string>();
 
-    for (const { delayMs = 0, when, event: ev, result } of steps) {
+    for (const { delayMs = 0, event: ev, result } of steps) {
       if (this.stopped) return;
-      if (when && when !== lastApproval) continue;
       if (delayMs) await sleep(delayMs);
 
       if ("agent" in ev && ev.agent && !active(ev.agent)) continue;
@@ -58,55 +51,36 @@ export class MockRuntime implements AgentRuntime {
         const agent = byName.get(ev.agent)!;
         // A tool no server offers (model guessed the name) arrives as server "builtin" with the full name.
         const runtimeName = ev.server === "builtin" ? ev.tool : `${ev.server}-${ev.tool}`;
-        const { decision, reason } = stopAfterReject(decide(agent, runtimeName, ev.args), rejected.has(agent.name));
+        const { decision, reason } = decide(agent, runtimeName);
         audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision, reason });
-        callAgent.set(ev.callId, agent.name);
         yield ev;
-        if (decision === "ask") {
-          // Like the SDK gate: the call waits for the user; a rejection comes back to the model as a denied call.
-          const wait = this.approvals.wait(ev.callId);
-          yield { type: "approval.requested", id: ev.callId, agent: agent.name, tool: runtimeName, args: ev.args ?? {} };
-          const r = await wait;
-          audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision: r.decision, reason: r.feedback ?? "user" });
-          yield { type: "approval.resolved", id: ev.callId, decision: r.decision, ...(r.feedback ? { feedback: r.feedback } : {}) };
-          lastApproval = r.decision === "approve" ? "approved" : "rejected";
-          if (r.decision === "reject") {
-            rejected.add(agent.name);
-            yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + (r.feedback ?? "Người dùng từ chối") };
-            callAgent.delete(ev.callId);
-          }
-          continue;
-        }
         if (decision === "deny") {
-          // Same error the real runtime reports for a denied call.
-          yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + (reason === AFTER_REJECT ? "" : denyHint(agent)) };
+          // Same error the real runtime reports for a denied call; the scenario's own completion is skipped.
+          yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + denyHint(agent) };
           yield { type: "message", agent: agent.name, text: `Bị chặn: ${reason}` };
-          callAgent.delete(ev.callId); // the scenario's own completion for this call is skipped
-        }
+        } else callAgent.set(ev.callId, agent.name);
         continue;
       }
       if (ev.type === "tool.completed") {
         const name = callAgent.get(ev.callId);
         if (!name) continue;
         callAgent.delete(ev.callId);
-        const r = result !== undefined && byName.get(name)?.directRead ? criteriaFromWorkItem(result) : null;
-        if (r) {
+        const item = result !== undefined && byName.get(name)?.directRead ? workItemFrom(result) : null;
+        if (item) {
           yield ev;
-          yield { type: "message", agent: name, text: "Đọc thẳng trường Acceptance Criteria (nguyên văn, không qua model)" };
-          yield { type: "criteria.result", agent: name, ...r };
+          yield { type: "message", agent: name, text: DIRECT_READ_OK };
+          yield { type: "workitem.result", agent: name, item };
           direct.add(name);
           continue;
         }
       }
-      if (ev.type === "criteria.result" && direct.has(ev.agent)) continue;
-
-      if (ev.type === "approval.requested") {
-        const wait = this.approvals.wait(ev.id); // register before yield: the consumer may resolve right away
-        yield ev;
-        const { decision, feedback } = await wait;
-        audit(this.cfg.root, { agent: ev.agent, tool: ev.tool, args: ev.args, decision, reason: feedback });
-        yield { type: "approval.resolved", id: ev.id, decision, ...(feedback ? { feedback } : {}) };
-        continue;
+      if (ev.type === "workitem.result") {
+        if (direct.has(ev.agent)) continue;
+        if (!WorkItem.safeParse(ev.item).success) {
+          failed.add(ev.agent);
+          yield { type: "agent.failed", agent: ev.agent, error: "Work item sai schema" };
+          continue;
+        }
       }
 
       if (ev.type === "agent.result") {
@@ -122,38 +96,13 @@ export class MockRuntime implements AgentRuntime {
         continue;
       }
 
-      if (ev.type === "action.result") {
-        const parsed = ActionResult.safeParse({ summary: ev.summary, link: ev.link });
-        if (!parsed.success) {
-          failed.add(ev.agent);
-          yield { type: "agent.failed", agent: ev.agent, error: `Kết quả sai schema: ${z.prettifyError(parsed.error).replaceAll("\n", "; ")}` };
-          continue;
-        }
-      }
-
-      if (ev.type === "criteria.result" && !AcResult.safeParse(ev).success) {
-        failed.add(ev.agent);
-        yield { type: "agent.failed", agent: ev.agent, error: "Tiêu chí sai schema" };
-        continue;
-      }
-      if (ev.type === "qa.result" && !QaResult.safeParse(ev.result).success) {
-        failed.add(ev.agent);
-        yield { type: "agent.failed", agent: ev.agent, error: "Kết quả nghiệm thu sai schema" };
-        continue;
-      }
-
       if (ev.type === "agent.failed") failed.add(ev.agent);
       if (ev.type === "agent.completed" && failed.has(ev.agent)) continue;
       yield ev;
     }
   }
 
-  resolveApproval(id: string, decision: "approve" | "reject", feedback?: string) {
-    this.approvals.resolve(id, decision, feedback);
-  }
-
   async stop() {
     this.stopped = true;
-    this.approvals.rejectAll("Runtime dừng");
   }
 }
