@@ -21,8 +21,8 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Phase 1: `pnpm brief` runtime `copilot` ở Work | ✅ lần 8: 4/4 agent, 55s, 33/120 AI Credits, không tool ghi nào được gọi |
 | Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ✅ Work lần 9 (runtime `copilot`, 52.8s, 31.39/120 AI Credits) |
 | Playwright MCP smoke (`pnpm playwright-smoke`) | ✅ ở Work (video + ảnh + trace) |
-| Phase 3: agent ghi có duyệt (Teams, ADO, GitHub) | ✅ `mock` ở Home; tên tool ghi kiểm ở Work lần 9 (ADO đã sửa); ⏳ [Work] lượt giao việc + Từ chối |
-| Phase 4: nghiệm thu bằng Playwright (agent `qa`, báo cáo có ảnh / video / trace) | ✅ `mock` ở Home; Work lần 9: 3/3 đạt, 6.49 AI Credits, 3 lỗi đã sửa; ⏳ [Work] chạy lại |
+| Phase 3: agent ghi có duyệt (Teams, ADO, GitHub) | ✅ `mock` ở Home; ✅ Work lần 11: Từ chối với comms-writer (lý do hiện trên UI, không gửi gì); ⏳ [Work] board-writer theo số work item |
+| Phase 4: nghiệm thu bằng Playwright (agent `qa`, báo cáo có ảnh / video / trace) | ✅ `mock` ở Home; ✅ Work lần 11: 2/3 đạt, ≈9.9 AI Credits, gọi tuần tự, 1 video; ⏳ [Work] ảnh theo phần tử, tiêu chí ADO nguyên văn |
 
 ## Tính năng dùng được (MVP)
 
@@ -34,9 +34,9 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Dashboard realtime: sơ đồ orchestrator → agent → MCP server, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
 | Chi tiết từng agent / MCP server: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node |
 | Hàng duyệt: xem tham số đầy đủ, Duyệt / Từ chối kèm lý do | tab Duyệt (tự mở khi có yêu cầu) |
-| Lấy tiêu chí nghiệm thu từ work item ADO (trường Acceptance Criteria, chỉ đọc) | tab Nghiệm thu → Lấy tiêu chí |
+| Lấy tiêu chí nghiệm thu từ work item ADO (trường Acceptance Criteria, chỉ đọc, giữ nguyên văn; đọc thẳng tool, không tốn credit model) | tab Nghiệm thu → Lấy tiêu chí |
 | Nghiệm thu một trang web: nhập URL + tiêu chí → agent `qa` mở trang bằng Playwright, kiểm từng tiêu chí, quay video, chụp ảnh, lưu trace → báo cáo HTML pass/fail | tab Nghiệm thu, `reports/qa-<thời gian>/index.html` |
-| Giao việc cho agent ghi: chọn một mục trong báo cáo (nhóm "Cần bạn xử lý" hoặc "Mục khác có agent ghi") → agent soạn tin Teams / comment, cập nhật work item ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi. Kết quả ("đã gửi", "không có gì được gửi" + lý do từ chối) hiện trên mục, node và tab Duyệt | tab Việc cần làm |
+| Giao việc cho agent ghi: chọn một mục trong báo cáo (nhóm "Cần bạn xử lý" hoặc "Mục khác có agent ghi") → agent soạn tin Teams / comment, cập nhật work item ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi. Kết quả ("đã gửi", "không có gì được gửi" + lý do từ chối hoặc lời giải thích của agent) hiện trên mục, node và tab Duyệt. Từ chối một lần là agent dừng gửi trong lượt đó. Giao cho board-writer theo số work item khi báo cáo không có mục ADO | tab Việc cần làm |
 | "Có gì mới": mục không có trong check việc ngày trước được đánh dấu "Mới" | báo cáo + tab Việc cần làm |
 | Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
 | Thanh credit đã dùng / ngân sách; nút Dừng (yêu cầu đang chờ bị từ chối, không bao giờ tự duyệt) | thanh trên |

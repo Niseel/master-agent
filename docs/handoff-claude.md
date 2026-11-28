@@ -89,6 +89,22 @@ bằng code (HTML → các `<li>`/dòng, bỏ thẻ, giữ nguyên chữ), model
 Kiểm: "Có gì mới" (cần `brief-<ngày trước>.json`), giao việc board-writer + Từ chối (theo mục 1), comms-writer dừng sau
 Từ chối, ảnh QA khác nhau, lấy tiêu chí nguyên văn rồi chạy QA với các tiêu chí đó.
 
+## 3a. Home đã làm (2026-11-28, `mock`) — trả lời §3 lần 11
+
+`pnpm typecheck` xanh, `pnpm test` 62/62, dashboard mock kiểm trên trình duyệt.
+
+| Mục | Đã làm | Chưa / lý do |
+|---|---|---|
+| 1 | "Giao theo số work item" (cuối tab Việc cần làm, mở được cả khi chưa check việc): dựng `BriefItem` nguồn ADO `Work item #<số>` trong trình duyệt (`workItemItem`), gửi `POST /api/act` như cũ, server kiểm schema; gate `allowedActions` giữ nguyên; kết quả hiện ngay dưới form. Prompt board-writer: số work item lấy từ tiêu đề. | Server không tự dựng item (không cần: schema đã kiểm). |
+| 2 | Luật tên tool trong prompt comms-writer (`search_paths`, `get_schema`, `create_entity`; không có `call_function`). Người nhận lấy từ lời giao (email), ô lời giao có gợi ý; thiếu người nhận thì không gọi tool ghi, trả "Thiếu người nhận…". **Gate dừng sau Từ chối** (`stopAfterReject`, cả SDK và mock): tool ghi sau đó của agent trong cùng lượt bị `deny` với lý do "Người dùng đã từ chối…", không tới hàng duyệt. Mục "không gửi gì" hiện câu giải thích của agent + số lần gate chặn. | Không thêm tool tra người/chat (sẽ đọc dữ liệu M365, trái thiết kế writer). |
+| 3 | Thông báo bỏ tin nhắn là JSON (kết quả có cấu trúc hiện từ event riêng). Chip đăng nhập "Chưa rõ" chuyển xanh khi đã có lời gọi tool thành công trên server đó (`authState`). Khung báo cáo chỉ tải lại sau lượt check việc (lượt giao việc/nghiệm thu/lấy tiêu chí gửi lại cùng báo cáo, làm `/report` bị huỷ giữa chừng). | — |
+| 4 | ac-reader gọi thẳng `wit_work_item` {action, id, project} qua SDK `session.rpc.mcp.callTool` (experimental), không lượt model, vẫn qua `decide()` + audit; tách trường bằng code (`criteriaFromWorkItem`: mục danh sách / dòng / `<br>`, bỏ thẻ, giải mã entity, giữ nguyên văn). Gọi thẳng lỗi hoặc kết quả không có `fields` → model đọc như cũ (prompt: giữ nguyên văn). | Chỉ kiểm được bằng mock: `callTool` thật và dạng kết quả ADO là [Work]. |
+| 5 | Schema thật Playwright MCP 0.0.86 (đọc từ gói): `browser_take_screenshot` nhận `target` (ref từ snapshot **hoặc CSS selector**) + `element`, hoặc `fullPage`. Task: chụp theo phần tử của tiêu chí; thuộc tính HTML kiểm bằng `browser_snapshot {target: "a[href='…'][target='_blank']"}` (có = có thuộc tính, lỗi không tìm thấy = không). Không mở `browser_evaluate`. | — |
+| 6 | code-reader: không đổi (vô hại, 1 lời gọi bị chặn mỗi lần). board-reader 0 mục: không đổi truy vấn (có thể đúng là không có thay đổi 24h); mục 1 thay cho nhu cầu giao việc. | Tuỳ chọn. |
+
+Đổi quyền: **chặt hơn** (writer bị chặn tool ghi sau một lần Từ chối). ac-reader vẫn chỉ `ado-wit_work_item`, header
+chỉ-đọc; lời gọi thẳng đi qua cùng `decide()` và audit.
+
 ## 3b. (lưu) Việc cho Home lần 10 — đã xong
 
 Yêu cầu chung của người dùng: **mọi trạng thái, lý do và kết quả (kể cả Từ chối) phải xem được trên UI.** Mọi mục

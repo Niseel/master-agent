@@ -171,6 +171,9 @@ trong báo cáo check việc mà người dùng chọn. **Mọi tool ghi chờ d
    "Đã xử lý" của tab Duyệt (quyết định, giờ, lý do, tham số).
    board-writer chỉ được `wit_work_item_comment_write` action `add`/`update` và `wit_work_item_write` action `update`
    (không tạo work item); action khác bị gate từ chối trước khi tới hàng duyệt.
+   Brief không có mục ADO: mở **Giao theo số work item** (cuối tab Việc cần làm), nhập số + lời giao → **Soạn**.
+   Sau một lần Từ chối, mọi tool ghi khác của agent đó trong cùng lượt bị gate chặn (không hỏi lại).
+   comms-writer cần người nhận trong lời giao (email); thiếu thì nó không soạn và nói rõ trên mục.
 3. Mỗi lần giao việc là một session riêng (tối thiểu 30 AI Credits theo giới hạn runtime; dùng thực tế thường ít hơn).
 
 ## 5e. Nghiệm thu (Phase 4)
@@ -181,7 +184,8 @@ Kết quả: `reports/qa-<thời gian>/index.html` (mở từ link trên tab, ho
 `traces/` (`npx playwright show-trace <file>`).
 
 - Tiêu chí lấy từ work item: nhập số work item → **Lấy tiêu chí** (agent `ac-reader`, chỉ đọc `wit_work_item`) →
-  **Dùng các tiêu chí này**. Một lượt là một session (trần 30 AI Credits).
+  **Dùng các tiêu chí này**. Runtime gọi thẳng tool và tách trường bằng code (nguyên văn, thường 0 credit); Chi tiết
+  của node ghi "Đọc thẳng trường Acceptance Criteria". Gọi thẳng lỗi thì model đọc (một session, trần 30 AI Credits).
 - Chỉ mở được đúng origin của URL đã nhập. Không chạy JS tuỳ ý, không tải file lên, không mở tab khác.
 - Không nhập mật khẩu hay tài khoản thật vào trang được kiểm. Chỉ kiểm trang local / staging.
 - Một lượt là một session (trần 30 AI Credits theo giới hạn runtime).
