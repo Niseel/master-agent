@@ -99,5 +99,60 @@
       "createdDate": "2026-11-23T03:45:00Z",
       "text": "Gặp lại lúc 03:18, log ở orders-api."
     }
+  ],
+  "repositories": [
+    {
+      "id": "repo-orders",
+      "name": "orders",
+      "project": "Orders"
+    }
+  ],
+  "pullRequests": [
+    {
+      "pullRequestId": 42,
+      "repository": {
+        "id": "repo-orders",
+        "name": "orders"
+      },
+      "title": "Hoàn tiền một phần (#1234)",
+      "createdBy": "D",
+      "status": "active",
+      "reviewers": [
+        {
+          "displayName": "Người dùng (tôi)",
+          "vote": 0
+        }
+      ],
+      "creationDate": "2026-11-23T02:10:00Z",
+      "workItemRefs": [
+        1234
+      ],
+      "url": "https://dev.azure.com/org/proj/_git/orders/pullrequest/42"
+    }
+  ],
+  "prThreads": [
+    {
+      "pullRequestId": 42,
+      "comments": [
+        {
+          "author": "D",
+          "content": "Nhờ anh review giúp, em đã thêm test cho trường hợp 2 triệu.",
+          "publishedDate": "2026-11-23T02:12:00Z"
+        }
+      ]
+    }
+  ],
+  "builds": [
+    {
+      "id": 901,
+      "definition": {
+        "name": "nightly-perf"
+      },
+      "sourceBranch": "refs/heads/perf-test",
+      "result": "failed",
+      "finishTime": "2026-11-23T01:00:00Z",
+      "requestedFor": "Lê C",
+      "url": "https://dev.azure.com/org/proj/_build/results?buildId=901"
+    }
   ]
 }

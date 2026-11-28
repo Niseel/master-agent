@@ -6,6 +6,7 @@
 import { loadConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
 import { createRuntime } from "@agenthub/core/runtime/index";
+import { effectiveConfig, loadHubFile } from "@agenthub/core/hub-config";
 import { witReader } from "@agenthub/core/wit";
 
 try {
@@ -18,7 +19,7 @@ if (!Number.isInteger(id) || id <= 0) {
   process.exit(2);
 }
 const cfg = await loadConfig();
-const agent = witReader(cfg, id);
+const agent = witReader(effectiveConfig(cfg, loadHubFile(cfg)), id);
 if (agent.missingConfig) {
   console.error(`✗ ${agent.missingConfig}`);
   process.exit(1);

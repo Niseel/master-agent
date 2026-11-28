@@ -314,7 +314,8 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 - [x] [Home] Hướng dẫn trên dashboard (2026-11-28): nút **Hướng dẫn** mở tour 11 bước bằng `driver.js` 1.14.0 (MIT, không phụ thuộc thư viện khác; Shepherd.js và Intro.js là AGPL, React Joyride kéo 10 thư viện). Tour tự đổi tab, popover theo theme sáng/tối; test kiểm mọi bước có `data-tour` trong App.tsx. Kịch bản demo + bảng audit: `docs/demo-mvp.md`. Lượt bị Dừng không ghi đè `brief-<ngày>.json` (bộ nhớ "Có gì mới").
 - [x] [Work] Lần 12 (audit MVP): Thành tự chạy tour ngày 2026-11-28 và chốt lại scope → [docs/milestone-1.md](docs/milestone-1.md).
 - [x] [Home] Milestone 1 bước 1 (Dọn), 2026-11-28: xoá agent ghi, hàng duyệt, tab Việc cần làm / Duyệt / Nghiệm thu, agent `qa`, `pnpm playwright-smoke`, `list-tools --writers`; gate chỉ còn allow / deny (tool ghi luôn bị chặn); ac-reader → wit-reader đọc đủ trường work item (`pnpm wit <số>`, gọi thẳng tool, 0 credit ở mock).
-- [ ] [Work] Lần 12: dữ kiện cho M1 (tên tool ADO Repos/PR/Pipeline, credit từng agent, `pnpm wit` gọi thẳng có chạy không, danh sách model + hệ số giá). Xem handoff-copilot lần 12.
+- [x] [Home] Milestone 1 bước 2–5 ở Home, 2026-11-28 (`mock`): card việc cần làm (gộp trùng, Eisenhower, todo, đã xong / cập nhật mới, xuất Markdown), agent ADO Repos + Pipelines, chọn khoảng thời gian / agent / trần credit; cổng và agent quản lý trên UI (`agenthub.local.json`, catalog, kéo thả, import mcp.json, tick tool); đăng nhập trên UI (az / gh / Work IQ, mã thiết bị, kho bí mật của OS); `pnpm eval` (deepeval TS). Xem docs/milestone-1.md §8.
+- [ ] [Work] Lần 13: kiểm M1 với dịch vụ thật (đăng nhập trên UI, lấy tool, check việc ra card, gọi thẳng `wit_work_item`, eval nháp) + dữ kiện còn thiếu của lần 12. Xem handoff-copilot lần 13.
 - Chuyển sang AG-UI nếu muốn dùng UI component có sẵn.
 
 ## 7. Cấu trúc thư mục đề xuất

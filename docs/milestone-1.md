@@ -183,6 +183,17 @@ cách 1 lẫn 2.
 
 Chỉ Task đã verify mới tính vào ngưỡng.
 
+**Định dạng Task** (`evals/task.ts`, file `evals/tasks/<id>.json`):
+- `size`: `item` hoặc `morning`; `status`: `draft` hoặc `verified` (kèm `verified: { by, at }`);
+- `story`: tình huống theo lời Thành, đã bỏ tên thật;
+- `data`: dữ liệu giả theo từng MCP server, cùng dạng `fixtures/data/<server>.json`;
+- `expected.todos`: mỗi việc mong đợi gồm `refs` (các mục nguồn, nhiều mục = phải gộp thành 1 card), `important`,
+  `urgent`, `mustMention` (ý card phải nêu), `phishing`;
+- `expected.notTodos`: các mục nguồn không được thành việc.
+
+Judge chọn bằng `AGENTHUB_JUDGE` (`evals/judge.ts`): `copilot[:model]` (mặc định), `anthropic:<model>`,
+`openai:<model>`, `ollama:<model>`. Telemetry của deepeval tắt bằng `DEEPEVAL_TELEMETRY_OPT_OUT=1`.
+
 **Nơi chạy:**
 - Home: dữ liệu tự tạo, kết quả commit được.
 - Work: cùng bộ case, chạy trên Copilot công ty, chỉ ghi điểm số về repo.
@@ -190,24 +201,40 @@ Chỉ Task đã verify mới tính vào ngưỡng.
 ## 8. Thứ tự làm
 
 1. **Dọn:** xoá các phần ở §2; ac-reader → wit-reader; chặn tool ghi của agent đọc; sửa tour. — **xong 2026-11-28** (`pnpm wit <số>`).
-2. **Output:** card việc, wit-reader đủ trường, gộp trùng, Eisenhower, todo list, đã xong / cập nhật mới, xuất. Dựng
-   khung eval song song từ bước này.
-3. **Quản lý cổng / agent:** file cấu hình, form tự giải thích, catalog, import `mcp.json`, kéo thả, chọn tool.
-4. **Đăng nhập:** tài khoản, SSO / token, kho bí mật của OS, trạng thái.
-5. **Eval đủ:** các Task đã verify, chạy ở Home và Work, đạt ngưỡng.
+2. **Output** — **xong ở Home 2026-11-28** (`mock`):
+   - schema mục nguồn mới (`brief.ts`: ref, detail, isTodo, important / urgent, priority, dueDate, todos, related, phishing, images);
+   - gộp trùng + xếp Eisenhower bằng code (`cards.ts`);
+   - card trên dashboard: lọc Cần làm / Đã xong / Đã ẩn / Mục khác, chi tiết nội dung gốc + link + ảnh (dạng link), todo sửa / thêm / sắp xếp / gạch / tick, Đã xong / Ẩn / Mở lại, "Cập nhật mới", lưu ở `reports/cards-state.json`;
+   - xuất Markdown (`GET /api/export.md`, nút Xuất Markdown), báo cáo HTML theo ô Eisenhower;
+   - chọn khoảng thời gian, agent, trần credit mỗi lượt; agent thứ 5 ADO Repos + Pipelines (tên tool từ `docs/mcp-tools.md`).
+   - Chưa: wit-reader làm giàu card ADO; "code lấy dữ liệu, model phán đoán" (chờ Work xác nhận gọi thẳng tool).
+3. **Quản lý cổng / agent** — **xong ở Home 2026-11-28** (`mock`):
+   - `agenthub.local.json` (gitignore) cùng dạng mcp.json; không có file = cấu hình có sẵn + `.env` như cũ (`hub-config.ts`);
+   - sơ đồ vẽ từ cấu hình, nhãn Agent / MCP + mô tả; nối dây agent → cổng, Delete để gỡ;
+   - catalog (cổng có sẵn, agent có sẵn, cổng stdio / http tự tạo, agent tự viết), kéo thả hoặc bấm Thêm;
+   - import mcp.json của VS Code (có comment), token không được chép mà thành ô bí mật;
+   - form cổng / agent, mỗi ô trả lời 4 câu (là gì / điền gì / lấy ở đâu / để làm gì);
+   - "Lấy danh sách tool" (0 credit) rồi tick; tool tên giống ghi bị khoá.
+4. **Đăng nhập** — **xong ở Home 2026-11-28**, chưa chạy thật:
+   - tab Đăng nhập theo từng cổng: Đăng nhập Microsoft (trình duyệt hoặc mã thiết bị, `az login`), Đăng nhập GitHub (`gh auth login --web`), Chấp nhận điều khoản Work IQ, Đăng xuất; mã thiết bị + link hiện trên UI;
+   - hồ sơ az riêng cho từng cổng Microsoft (ADO khác Azure);
+   - bí mật của cổng tự tạo ở kho bí mật của OS (`@napi-rs/keyring`), file chỉ giữ `${input:<id>}`.
+   - [Work] kiểm luồng đăng nhập thật trên Windows (handoff lần 13).
+5. **Eval** — khung xong ở Home 2026-11-28: `pnpm eval [--drafts] [--task <id>]`, 3 metric tính bằng code + G-Eval do judge
+   chấm, kết quả ở `evals/results/`. Có 1 Task mẫu (nháp, không tính). Chưa có Task đã verify: chờ Thành kể tình huống.
 
 ## 9. Định nghĩa xong M1
 
-- [ ] Thêm một cổng mới từ catalog hoặc từ `mcp.json`, nối vào agent, tick tool, đăng nhập trên UI và chạy check việc. Không phải sửa code.
-- [ ] Bỏ một cổng hoặc agent trên UI; check việc vẫn chạy với phần còn lại.
-- [ ] Trạng thái đăng nhập của mọi cổng đúng với thực tế ở Work.
-- [ ] Check việc ra card đúng §5 ở Work với 5 agent mặc định.
-- [ ] Eval đạt ngưỡng §7 ở Work.
-- [ ] `pnpm test` + `pnpm typecheck` xanh; mọi tính năng chạy được với `mock`.
+- [ ] Thêm một cổng mới từ catalog hoặc từ `mcp.json`, nối vào agent, tick tool, đăng nhập trên UI và chạy check việc. Không phải sửa code. — [Home] mock xong; [Work] với cổng thật.
+- [ ] Bỏ một cổng hoặc agent trên UI; check việc vẫn chạy với phần còn lại. — [Home] mock xong; [Work].
+- [ ] Trạng thái đăng nhập của mọi cổng đúng với thực tế ở Work. — [Work].
+- [ ] Check việc ra card đúng §5 ở Work với 5 agent mặc định. — [Work].
+- [ ] Eval đạt ngưỡng §7 ở Work. — cần Task đã verify (Thành).
+- [x] `pnpm test` + `pnpm typecheck` xanh; mọi tính năng chạy được với `mock`. — 63/63 (2026-11-28).
 
-## 10. Chờ Thành chốt
+## 10. Đã chốt thêm (2026-11-28)
 
-1. Đề xuất giảm credit §6 (kiểm trước bằng code; code lấy dữ liệu, model chỉ phán đoán; chọn model bằng eval): làm
-   ở M1 hay để sau?
-2. Model và effort mặc định cho agent đọc khi chưa có số đo eval.
-3. Bộ Task eval đầu tiên: Thành kể các tình huống (bắt đầu bằng hỏi đáp).
+1. Giảm credit (§6 cách 1 và 2): **làm trong M1**, sau khi Work lần 12 xác nhận gọi thẳng tool chạy được. Card việc thiết kế sẵn theo hướng "code lấy dữ liệu, model phán đoán".
+2. Model / effort: **giữ mặc định**. Khi có Task đã verify, chạy eval trên vài tổ hợp (danh sách model từ Work lần 12), chọn tổ hợp rẻ nhất đạt ngưỡng.
+3. Task eval có **hai cỡ**: `item` (1 nguồn → 1 card) và `morning` (cả buổi sáng → danh sách việc: bỏ sót, báo thừa, gộp trùng).
+4. Thành **kể tự do trong chat**; Claude hỏi lại chỗ thiếu, viết Task (dữ liệu giả + đáp án) ở trạng thái `draft`, Thành duyệt từng ô rồi mới thành `verified`.

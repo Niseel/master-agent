@@ -19,6 +19,7 @@
     "apps/*/src",
     "apps/*/test",
     "scripts",
-    "agenthub.config.ts"
+    "agenthub.config.ts",
+    "evals"
   ]
 }

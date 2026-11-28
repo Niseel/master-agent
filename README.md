@@ -13,7 +13,7 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Phần | Trạng thái |
 |---|---|
 | `AgentRuntime` + runtime `mock` / `byok` / `copilot` | ✅ |
-| 4 agent đọc (comms, board, code, cloud), mỗi agent 1 session + MCP riêng | ✅ |
+| 5 agent đọc có sẵn (Outlook + Teams, ADO Board, ADO Repos + Pipelines, GitHub, Azure Monitor), mỗi agent 1 session + chỉ thấy cổng của nó | ✅ |
 | Tool gate chỉ-đọc (`onPreToolUse` + `onPermissionRequest`), audit log JSONL | ✅ |
 | Mock MCP (Work IQ, ADO, Azure Monitor) theo tên tool thật từ Bước 0 + fixture có prompt injection | ✅ |
 | `pnpm brief` + báo cáo HTML | ✅ `mock`; ✅ `byok` thật ở Home (login Copilot cá nhân, 3 agent, ~47s, model gắn nhãn mail chứa prompt injection, không gọi tool ghi) |
@@ -21,27 +21,30 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Phase 1: `pnpm brief` runtime `copilot` ở Work | ✅ lần 8: 4/4 agent, 55s, 33/120 AI Credits, không tool ghi nào được gọi |
 | Phase 2: dashboard `pnpm dashboard` | ✅ `mock` ở Home; ✅ Work lần 9 (runtime `copilot`, 52.8s, 31.39/120 AI Credits) |
 | wit-reader: đọc đủ trường một work item (`pnpm wit <số>`), gọi thẳng tool, 0 credit | ✅ `mock` ở Home; ⏳ [Work] gọi thẳng có chạy không |
-| Milestone 1: quản lý cổng / agent trên UI, đăng nhập trên UI, card việc cần làm, eval | ⏳ [docs/milestone-1.md](docs/milestone-1.md) |
+| Milestone 1: card việc cần làm, quản lý cổng / agent trên UI, đăng nhập trên UI, eval | ✅ `mock` ở Home (2026-11-28); ⏳ [Work] lần 13; ⏳ Task eval đã verify — [docs/milestone-1.md](docs/milestone-1.md) |
 
-## Tính năng dùng được (MVP)
+## Tính năng dùng được (Milestone 1)
 
 | Tính năng | Lệnh / chỗ dùng |
 |---|---|
-| Check việc buổi sáng: 4 agent chỉ-đọc chạy song song (Outlook + Teams qua Work IQ, Azure DevOps, GitHub, Azure Monitor) | `pnpm brief` hoặc nút Chạy trên dashboard |
-| Báo cáo HTML: "Cần bạn xử lý" lên đầu, nhóm theo nguồn, màu theo độ ưu tiên, link trực tiếp, credit đã dùng | `reports/brief-<ngày>.html`, hoặc khung Báo cáo trên dashboard |
-| Báo lỗi có cách sửa: "Không lấy được" (đăng nhập, EULA, cấu hình, hết ngân sách), "Cảnh báo" (1 workspace không đọc được, lỗi lạ), "Đã chặn" (tool gate từ chối) | báo cáo + dashboard |
-| Dashboard realtime: sơ đồ orchestrator → agent → MCP server, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
-| Chi tiết từng agent / MCP server: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node |
-| "Có gì mới": mục không có trong check việc ngày trước được đánh dấu "Mới" | báo cáo |
-| Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
-| Hướng dẫn: tour giới thiệu từng phần của dashboard (tự đổi tab) | nút Hướng dẫn trên thanh trên |
+| Check việc: các agent chỉ-đọc chạy song song; chọn khoảng thời gian (hôm nay / 24h / 3 ngày / 7 ngày), agent và trần credit mỗi lượt | nút Chạy trên dashboard, hoặc `pnpm brief` |
+| Card việc cần làm: gộp trùng giữa nguồn (cùng work item / PR / link), xếp theo ô Eisenhower rồi Priority ADO rồi hạn; nhãn nguồn, P1–4, Mới, Cập nhật mới | khung Việc cần làm dưới sơ đồ |
+| Chi tiết card: nội dung gốc gọn, link mở bản gốc, ảnh (link), lý do quan trọng / gấp; todo list do model gợi ý, sửa / thêm / sắp xếp / gạch bỏ / tick; Đã xong / Ẩn / Mở lại (lưu ở `reports/cards-state.json`) | bấm vào card |
+| Xuất danh sách việc dạng Markdown; báo cáo HTML theo ô Eisenhower | nút Xuất Markdown; `reports/brief-<ngày>.html` |
+| Mail lừa đảo / prompt injection: gắn nhãn, không thành việc, agent không làm theo | dải đỏ trên khung Việc cần làm |
+| Cổng MCP và agent quản lý trên UI: thêm từ catalog (kéo thả), nối dây agent → cổng, xoá bằng Delete, form tự giải thích từng ô; import `mcp.json` của VS Code | nút "＋ Thêm cổng / agent", tab Cấu hình; lưu ở `agenthub.local.json` |
+| Chọn tool được dùng của mỗi cổng: Lấy danh sách tool (0 credit), tick; tool tên giống ghi bị khoá | tab Cấu hình của cổng |
+| Đăng nhập trên UI: Microsoft (`az login`, trình duyệt hoặc mã thiết bị, hồ sơ riêng mỗi cổng), GitHub (`gh auth login --web`), điều khoản Work IQ, Đăng xuất; token của cổng tự tạo ở kho bí mật của OS | tab Đăng nhập |
+| Dashboard realtime: sơ đồ orchestrator → agent → cổng MCP, node đổi trạng thái, edge nhấp nháy khi đang gọi tool, đỏ khi lỗi | `pnpm dashboard` → http://127.0.0.1:4317 |
+| Chi tiết từng agent / cổng: từng lần gọi tool, thời gian, credit, token, lỗi + gợi ý | bấm vào node (tab Chi tiết) |
+| Báo lỗi có cách sửa: "Không lấy được" (đăng nhập, EULA, cấu hình, hết ngân sách), "Cảnh báo", "Đã chặn" | báo cáo + dashboard |
 | Đọc đủ một work item ADO (title, state, priority, point, giờ, người được giao, iteration, hạn, tag, description, AC), nguyên văn, không tốn credit model | `pnpm wit <số>` |
-| Thanh credit đã dùng / ngân sách; nút Dừng | thanh trên |
-| An toàn: chỉ đọc (tool ghi luôn bị chặn), agent chỉ thấy tool trong allowlist, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
+| Eval bằng deepeval: nhận đúng việc, ô Eisenhower, an toàn, tóm tắt + todo (G-Eval); judge chọn bằng `AGENTHUB_JUDGE` | `pnpm eval [--drafts]`, Task ở `evals/tasks/` |
+| Hướng dẫn: tour giới thiệu từng phần của dashboard (tự đổi tab) | nút Hướng dẫn trên thanh trên |
+| An toàn: chỉ đọc (tool ghi luôn bị chặn), agent chỉ thấy tool đã tick, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
 | Chạy thử không cần dịch vụ thật: runtime `mock` với 3 kịch bản, `byok` với MCP giả | `AGENTHUB_RUNTIME`, `AGENTHUB_SCENARIO` |
-| Công cụ kiểm: tool model thấy (`pnpm smoke <agent> --tools`), danh sách tool thật (`pnpm list-tools`) | không tốn credit |
 
-Chưa có (Milestone 1, xem [docs/milestone-1.md](docs/milestone-1.md)): quản lý cổng MCP / agent trên UI, đăng nhập trên UI, card việc cần làm, eval. Đã bỏ: agent ghi (Phase 3), nghiệm thu bằng Playwright (Phase 4).
+Đã bỏ: agent ghi (Phase 3), nghiệm thu bằng Playwright (Phase 4). Sau M1: lịch chạy tự động.
 
 ## Chạy ở Home (không cần Copilot công ty)
 
@@ -53,6 +56,8 @@ pnpm install
 pnpm test         # gate, allowlist, mapper event, schema, mock MCP, mock end-to-end (audit vào thư mục tạm)
 pnpm brief        # runtime mock, phát lại fixtures/scenarios/brief-ok.jsonl
 pnpm dashboard    # build giao diện rồi mở http://127.0.0.1:4317 (runtime theo AGENTHUB_RUNTIME, mặc định mock)
+pnpm wit 1234     # đọc đủ trường work item 1234 (mock)
+pnpm eval --drafts  # chạy eval trên Task nháp: tốn quota model (byok), judge theo AGENTHUB_JUDGE
 pnpm hub          # chỉ server (dùng bản build sẵn trong apps/web/dist)
 ```
 
@@ -75,17 +80,23 @@ GITHUB_MCP_TOKEN=$(gh auth token) AGENTHUB_RUNTIME=byok pnpm brief        # tố
 
 ```
 packages/core/src/
-  agents.ts        4 agent đọc: prompt, MCP server, allowlist tool đọc
+  agents.ts        5 agent đọc có sẵn + cổng có sẵn: prompt, quy tắc việc cần làm, MCP server, allowlist tool đọc
+  hub-config.ts    agenthub.local.json: cổng / agent của người dùng, catalog, import mcp.json
+  cards.ts         gộp trùng, Eisenhower, trạng thái card, xuất Markdown
+  login.ts         lệnh đăng nhập az / gh / Work IQ, đọc mã thiết bị
+  secrets.ts       kho bí mật của OS cho token của cổng
+  tool-list.ts     danh sách tool của một cổng (0 credit)
   wit.ts           wit-reader: đọc đủ trường một work item ADO (gọi thẳng tool, tách trường bằng code)
   security.ts      tool gate chỉ-đọc (decide), redact secret, audit log
   events.ts        HubEvent + mapSdkEvent (event SDK → event nội bộ)
-  brief.ts         schema BriefItem (zod) — cũng là response schema gửi cho model
+  brief.ts         schema BriefItem (zod): một mục nguồn đã đánh giá — cũng là response schema gửi cho model
   report.ts        summarize + render HTML
   hints.ts         lỗi đã biết → cách sửa (dùng cả ở trình duyệt)
-  auth.ts          kiểm đăng nhập gh / az, không trả token
+  auth.ts          kiểm đăng nhập từng cổng (gh / az / bí mật), không trả token
   config.ts        agenthub.config.ts + .env
   runtime/         AgentRuntime, mock.ts, sdk.ts (byok + copilot)
-packages/mock-mcp/ MCP server giả (stdio): workiq, azure
+packages/mock-mcp/ MCP server giả (stdio): workiq, ado, azure, github (github chỉ cho eval)
+evals/             deepeval: Task (task.ts), metric (metrics.ts), judge (judge.ts), pnpm eval (run.ts)
 apps/cli/          pnpm brief, pnpm wit
 apps/server/       pnpm hub (API dashboard + phục vụ giao diện, chỉ 127.0.0.1)
 apps/web/          dashboard React + @xyflow/react (state.ts: event → trạng thái node, có test)

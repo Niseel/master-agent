@@ -18,7 +18,7 @@ async function replay(scenario: string) {
   const rt = new MockRuntime(cfg);
   const events: Timed[] = [];
   let t = 0;
-  for await (const event of rt.run({ prompt: "check việc", agents: specs, budget: 120 })) events.push({ at: (t += 10), event });
+  for await (const event of rt.run({ prompt: "check việc", agents: specs, budget: 150 })) events.push({ at: (t += 10), event });
   return { agents, events };
 }
 
@@ -31,10 +31,10 @@ test("dashboard state: brief-ok ends with every agent done or warned, credits su
   assert.equal(v.servers.azure.status, "warning");
   assert.equal(v.servers.ado.status, "done", "a WIQL error the model retried past does not mark the server");
   assert.ok(v.agents["board-reader"].calls.some((c) => c.hint?.includes("@Follows")), "but the call log keeps it with its hint");
-  assert.equal(v.usedAiCredits, 31.5);
+  assert.equal(v.usedAiCredits, 35.5);
   assert.ok(v.agents["code-reader"].calls.some((c) => c.tool === "add_issue_comment" && c.denied), "a write tool is denied, not queued");
   assert.ok(v.agents["comms-reader"].calls.some((c) => c.denied), "denied call kept in the agent's log");
-  assert.equal(Object.values(v.agents).reduce((n, a) => n + a.items, 0), 10);
+  assert.equal(Object.values(v.agents).reduce((n, a) => n + a.items, 0), 12);
 });
 
 test("dashboard state: login and EULA errors need the user; mid-run state shows running and in-flight calls", async () => {

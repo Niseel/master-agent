@@ -9,7 +9,8 @@ import {
   type SessionConfig,
   type SessionHooks,
 } from "@github/copilot-sdk";
-import type { AgentSpec } from "../agents.ts";
+import { MIN_SESSION_CREDITS, windowPrompt, type AgentSpec } from "../agents.ts";
+export { MIN_SESSION_CREDITS };
 import { az } from "../auth.ts";
 import { AgentResult, dropEmpty, droppedText } from "../brief.ts";
 import { DIRECT_READ_FAILED, DIRECT_READ_OK, WorkItem, workItemFrom } from "../wit.ts";
@@ -19,8 +20,6 @@ import { audit, decide, denyHint } from "../security.ts";
 import { EventQueue, type AgentRuntime, type RunInput } from "./index.ts";
 
 type PreToolUseHookOutput = Exclude<Awaited<ReturnType<NonNullable<SessionHooks["onPreToolUse"]>>>, void>;
-/** Found at Home 2026-11-23: "Minimum session limit is 30 AI credits." */
-export const MIN_SESSION_CREDITS = 30;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -142,7 +141,7 @@ export class SdkRuntime implements AgentRuntime {
       });
       const stuck = await waitForMcp(s, Object.keys(a.mcpServers));
       if (stuck.length) q.push({ type: "message", agent: a.name, text: `MCP chưa kết nối sau 60s: ${stuck.join(", ")}` });
-      const prompt = [input.prompt, a.task].filter(Boolean).join("\n\n");
+      const prompt = [input.prompt, input.window ? windowPrompt(input.window, input.now ? new Date(input.now) : undefined) : "", a.task].filter(Boolean).join("\n\n");
       if (a.output === "workItem") {
         const item = (await this.directWorkItem(s, a, q)) ?? (await s.sendAndWait({ prompt }, WorkItem, this.cfg.timeoutMs));
         q.push({ type: "workitem.result", agent: a.name, item });

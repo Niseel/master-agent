@@ -1,6 +1,7 @@
 /**
  * Fake MCP servers (stdio) backed by fixtures/data/*.json. Synthetic data only.
- *   node --import tsx packages/mock-mcp/src/server.ts workiq|ado|azure
+ *   node --import tsx packages/mock-mcp/src/server.ts workiq|ado|azure|github
+ * AGENTHUB_FIXTURE_DIR replaces fixtures/data (the eval runner points it at one Task's data).
  * Tool names follow docs/mcp-tools.md (real names from Step 0 at Work).
  * ponytail: input schemas are partly guessed (SDK does not expose real ones); real params come from the `args`
  * recorded in logs/audit-*.jsonl at Work.
@@ -14,7 +15,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const load = (name: string) => JSON.parse(readFileSync(path.join(root, "fixtures/data", `${name}.json`), "utf8"));
+const dataDir = process.env.AGENTHUB_FIXTURE_DIR || path.join(root, "fixtures/data");
+const load = (name: string) => JSON.parse(readFileSync(path.join(dataDir, `${name}.json`), "utf8"));
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const fail = (text: string) => ({ isError: true, content: [{ type: "text" as const, text }] });
 const readOnly = { readOnlyHint: true };
@@ -150,11 +152,79 @@ if (kind === "workiq") {
     { description: "Retrieve a list of projects in your organization", inputSchema: {}, annotations: readOnly },
     async () => json(data.projects),
   );
+  // Repos + Pipelines (adorepo-reader). Names from docs/mcp-tools.md; actions from the descriptions there.
+  // ponytail: params beyond `action`/`project` are guesses until Work records real args (audit log).
+  const loose = { action: z.string(), project: z.string().optional(), repositoryId: z.string().optional(), pullRequestId: z.number().optional() };
+  server.registerTool(
+    "repo_repository",
+    { description: "Read operations on Azure DevOps Git repositories. Use 'action' to choose: 'get', 'list'", inputSchema: loose, annotations: readOnly },
+    async () => json(data.repositories),
+  );
+  server.registerTool(
+    "repo_pull_request",
+    { description: "Read operations on Azure DevOps pull requests. Use 'action' to choose: 'get', 'list'", inputSchema: { ...loose, status: z.string().optional() }, annotations: readOnly },
+    async ({ action, pullRequestId }) =>
+      action === "get" ? json(data.pullRequests.find((p: { pullRequestId: number }) => p.pullRequestId === pullRequestId) ?? null) : json(data.pullRequests),
+  );
+  server.registerTool(
+    "repo_pull_request_thread",
+    { description: "Read operations on pull request comment threads. Use 'action' to choose: 'list'", inputSchema: loose, annotations: readOnly },
+    async ({ pullRequestId }) => json(data.prThreads.filter((t: { pullRequestId: number }) => pullRequestId === undefined || t.pullRequestId === pullRequestId)),
+  );
+  server.registerTool(
+    "pipelines_definition",
+    { description: "Read operations on pipeline (build) definitions. 'list'", inputSchema: loose, annotations: readOnly },
+    async () => json({ items: data.builds.map((b: { definition: unknown }) => b.definition) }),
+  );
+  server.registerTool(
+    "pipelines_build",
+    { description: "Read operations on Azure Pipelines builds. Use 'action' to choose: 'list'", inputSchema: { ...loose, resultFilter: z.string().optional() }, annotations: readOnly },
+    async () => json(data.builds),
+  );
+  server.registerTool(
+    "pipelines_build_log",
+    { description: "Build log access. 'list', 'get_content'", inputSchema: { ...loose, buildId: z.number().optional() }, annotations: readOnly },
+    async () => json({ lines: ["[load-test] p95 2300ms > 1500ms", "##[error] Load test threshold exceeded"] }),
+  );
   server.registerTool(
     "core_list_project_teams",
     { description: "Retrieve a list of teams for a project", inputSchema: { project: z.string() }, annotations: readOnly },
     async () => json(data.teams),
   );
+} else if (kind === "github") {
+  // Eval only (runtime mock never starts MCP servers; byok/copilot use the real GitHub MCP). Read tools of code-reader.
+  const data = load("github");
+  const loose = {
+    owner: z.string().optional(),
+    repo: z.string().optional(),
+    query: z.string().optional(),
+    method: z.string().optional(),
+    pullNumber: z.number().optional(),
+    resource_id: z.string().optional(),
+    perPage: z.number().optional(),
+  };
+  const pick = (list: string, key: string, id: unknown) => (data[list] ?? []).find((x: Record<string, unknown>) => String(x[key]) === String(id)) ?? null;
+  const tools: Record<string, (a: Record<string, unknown>) => unknown> = {
+    get_me: () => data.me ?? { login: "me" },
+    search_pull_requests: () => data.pullRequests ?? [],
+    list_pull_requests: () => data.pullRequests ?? [],
+    pull_request_read: (a) => pick("pullRequests", "number", a.pullNumber),
+    search_issues: () => data.issues ?? [],
+    list_issues: () => data.issues ?? [],
+    issue_read: () => null,
+    actions_list: () => data.workflowRuns ?? [],
+    actions_get: (a) => pick("workflowRuns", "id", a.resource_id),
+    get_job_logs: () => data.jobLogs ?? "",
+    list_commits: () => data.commits ?? [],
+    get_commit: () => null,
+    get_file_contents: () => "",
+    search_repositories: () => data.repositories ?? [],
+    list_branches: () => data.branches ?? [],
+  };
+  for (const [name, run] of Object.entries(tools)) {
+    server.registerTool(name, { description: `GitHub ${name} (mock)`, inputSchema: loose, annotations: readOnly }, async (a) => json(run(a)));
+  }
+  server.registerTool("add_issue_comment", { description: "Add a comment to an issue", inputSchema: loose }, async () => json({ error: NEVER }));
 } else if (kind === "azure") {
   const data = load("azure");
   // Real server (`--namespace monitor --read-only`) has one `monitor` tool that dispatches sub-commands

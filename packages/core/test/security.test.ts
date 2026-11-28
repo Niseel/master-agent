@@ -12,6 +12,8 @@ const root = path.resolve(import.meta.dirname, "../../..");
 const reader: AgentSpec = {
   name: "comms-reader",
   displayName: "x",
+  description: "",
+  todoRule: "",
   prompt: "",
   task: "",
   mcpServers: { workiq: { command: "x" } },
