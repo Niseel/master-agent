@@ -229,6 +229,9 @@ test("có gì mới: items not in the last earlier brief (same runtime) are mark
       assert.deepEqual(day2.report.isNew, [false, false, true]);
       assert.match(readFileSync(day2.file, "utf8"), /1 mới so với 2026-11-25[\s\S]*<span class="badge new">Mới<\/span>/);
     }
+    // A stopped run (Dừng) must not replace the day's memory with partial items.
+    saveReport(cfg, result([]), 1, new Date("2026-11-27T09:00:00Z"), true);
+    assert.equal(JSON.parse(readFileSync(path.join(dir, "brief-2026-11-27-mock.json"), "utf8")).items.length, 3);
   } finally {
     process.env.AGENTHUB_REPORT_DIR = before;
   }

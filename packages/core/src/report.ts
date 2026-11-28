@@ -157,7 +157,7 @@ ${r.blocked?.length ? `<h2>Đã chặn</h2><ul>${r.blocked.map((b) => `<li class
  * Build the report from a run's events and write <AGENTHUB_REPORT_DIR or root/reports>/brief-YYYY-MM-DD.html.
  * mock/byok runs get a suffix (brief-YYYY-MM-DD-mock.html), so trying the mock at Work never overwrites the real report.
  */
-export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredits">, events: HubEvent[], durationMs: number, now = new Date()) {
+export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredits">, events: HubEvent[], durationMs: number, now = new Date(), stopped = false) {
   const date = now.toISOString().slice(0, 10);
   const dir = process.env.AGENTHUB_REPORT_DIR || path.join(cfg.root, "reports");
   const suffix = cfg.runtime === "copilot" ? "" : `-${cfg.runtime}`;
@@ -172,6 +172,7 @@ export function saveReport(cfg: Pick<HubConfig, "root" | "runtime" | "maxAiCredi
   mkdirSync(dir, { recursive: true });
   writeFileSync(file, renderReport(report));
   // Items only (no failures/warnings): what the next day compares against. Stays local (reports/ is gitignored).
-  writeFileSync(path.join(dir, `brief-${date}${suffix}.json`), JSON.stringify({ date, runtime: cfg.runtime, items: report.items }, null, 2));
+  // A run stopped midway has partial items: keep the day's earlier memory.
+  if (!stopped) writeFileSync(path.join(dir, `brief-${date}${suffix}.json`), JSON.stringify({ date, runtime: cfg.runtime, items: report.items }, null, 2));
   return { report, file };
 }

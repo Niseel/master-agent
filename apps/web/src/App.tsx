@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hint } from "@agenthub/core/hints";
 import * as api from "./api.ts";
+import { startTour } from "./tour.ts";
 import { Graph, SERVER_LABEL, STATUS_LABEL, type Selection } from "./Graph.tsx";
 import type { BriefItem } from "@agenthub/core/brief";
 import { authState, derive, outcomeText, pending, sameItem, todoGroups, workItemItem, writerOutcome, type Approval, type Call, type Snapshot, type View, type WriterOutcome } from "./state.ts";
@@ -81,6 +82,7 @@ export function App() {
         <div className="brand">Agent Hub</div>
         <form
           className="command"
+          data-tour="command"
           onSubmit={(e) => {
             e.preventDefault();
             void start();
@@ -105,10 +107,10 @@ export function App() {
             </button>
           )}
         </form>
-        <span className={`chip runtime ${snap.runtime}`} title="AGENTHUB_RUNTIME">
+        <span className={`chip runtime ${snap.runtime}`} title="AGENTHUB_RUNTIME" data-tour="runtime">
           {snap.runtime}
         </span>
-        <div className="credits" title="AI Credits đã dùng / ngân sách (AGENTHUB_MAX_AI_CREDITS)">
+        <div className="credits" data-tour="credits" title="AI Credits đã dùng / ngân sách (AGENTHUB_MAX_AI_CREDITS)">
           <div className="meter">
             <div className={`fill${pct > 85 ? " hot" : ""}`} style={{ width: `${pct}%` }} />
           </div>
@@ -116,7 +118,7 @@ export function App() {
             {credits.toFixed(1)} / {snap.maxAiCredits} credits
           </span>
         </div>
-        <div className="auth-chips">
+        <div className="auth-chips" data-tour="auth">
           {(auth ?? []).map((a) => {
             const st = authState(a.status, view, a.source);
             return (
@@ -127,6 +129,9 @@ export function App() {
             );
           })}
         </div>
+        <button type="button" className="tour-start" onClick={() => startTour(setTab)}>
+          Hướng dẫn
+        </button>
         {!connected && <span className="chip offline">Mất kết nối</span>}
       </header>
       {error && (
@@ -136,10 +141,10 @@ export function App() {
       )}
 
       <main className="main">
-        <section className="graph" aria-label="Sơ đồ agent">
+        <section className="graph" aria-label="Sơ đồ agent" data-tour="graph">
           <Graph agents={snap.agents} view={view} running={running} selection={selection} onSelect={(s) => (setSelection(s), setTab("detail"))} />
         </section>
-        <aside className="panel">
+        <aside className="panel" data-tour="panel">
           <nav className="tabs" role="tablist">
             <button role="tab" aria-selected={tab === "detail"} onClick={() => setTab("detail")}>
               Chi tiết
@@ -192,7 +197,7 @@ export function App() {
         </aside>
       </main>
 
-      <section className="report" aria-label="Báo cáo">
+      <section className="report" aria-label="Báo cáo" data-tour="report">
         {snap.report ? (
           <>
             <div className="report-head">

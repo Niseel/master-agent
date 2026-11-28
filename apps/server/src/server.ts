@@ -179,7 +179,7 @@ export class Hub {
       } finally {
         await this.runtime?.stop();
         this.runtime = null;
-        if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0);
+        if (mode === "brief") this.report = saveReport(this.cfg, this.events, Date.now() - t0, new Date(), this.stopping);
         finish?.(this.events.slice(first), Date.now() - t0);
         this.status = this.stopping ? "stopped" : "done";
         this.emit("run", { status: this.status, mode, report: this.report && { file: this.report.file, ...this.report.report }, qa: this.qaState(), ac: this.ac });
