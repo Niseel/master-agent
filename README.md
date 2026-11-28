@@ -39,6 +39,7 @@ Bàn giao giữa hai môi trường: Home → Work [docs/handoff-copilot.md](doc
 | Giao việc cho agent ghi: chọn một mục trong báo cáo (nhóm "Cần bạn xử lý" hoặc "Mục khác có agent ghi") → agent soạn tin Teams / comment, cập nhật work item ADO / comment hoặc PR GitHub → chờ bạn duyệt rồi mới gửi. Kết quả ("đã gửi", "không có gì được gửi" + lý do từ chối hoặc lời giải thích của agent) hiện trên mục, node và tab Duyệt. Từ chối một lần là agent dừng gửi trong lượt đó. Giao cho board-writer theo số work item khi báo cáo không có mục ADO | tab Việc cần làm |
 | "Có gì mới": mục không có trong check việc ngày trước được đánh dấu "Mới" | báo cáo + tab Việc cần làm |
 | Kiểm đăng nhập từng nguồn (GitHub, ADO, Azure; Work IQ biết khi chạy), không tốn credit, không hiện token | tab Đăng nhập, chip trên thanh trên |
+| Hướng dẫn: tour 11 bước giới thiệu từng phần của dashboard (tự đổi tab). Kịch bản demo + bảng audit: [docs/demo-mvp.md](docs/demo-mvp.md) | nút Hướng dẫn trên thanh trên |
 | Thanh credit đã dùng / ngân sách; nút Dừng (yêu cầu đang chờ bị từ chối, không bao giờ tự duyệt) | thanh trên |
 | An toàn: agent chỉ thấy tool trong allowlist, gate 2 lớp, MCP chỉ-đọc, ngân sách mỗi agent, audit JSONL | luôn bật |
 | Chạy thử không cần dịch vụ thật: runtime `mock` với 3 kịch bản, `byok` với MCP giả | `AGENTHUB_RUNTIME`, `AGENTHUB_SCENARIO` |

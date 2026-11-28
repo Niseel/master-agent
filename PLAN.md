@@ -303,6 +303,8 @@ Song song ở **[Home]**, Claude Code có thể bắt đầu ngay: dựng monore
 ### Phase 5 — Tuỳ chọn
 - Lịch chạy tự động mỗi sáng (Windows Task Scheduler / cron gọi `pnpm brief`).
 - [x] Bộ nhớ: lưu brief các ngày trước để so sánh "có gì mới". — Home 2026-11-27: mỗi lần check việc ghi thêm `brief-<ngày>[-runtime].json` (chỉ items, trong `reports/`, không commit); báo cáo + dashboard đánh dấu "Mới" cho mục không có trong brief của ngày gần nhất trước đó (cùng runtime; khoá `source` + `link`, không có link thì `title`). [Work] kiểm ở lần chạy ngày hôm sau. Lần 11: không kiểm (người dùng chọn bỏ qua), chuyển lần 12.
+- [x] [Home] Hướng dẫn trên dashboard (2026-11-28): nút **Hướng dẫn** mở tour 11 bước bằng `driver.js` 1.14.0 (MIT, không phụ thuộc thư viện khác; Shepherd.js và Intro.js là AGPL, React Joyride kéo 10 thư viện). Tour tự đổi tab, popover theo theme sáng/tối; test kiểm mọi bước có `data-tour` trong App.tsx. Kịch bản demo + bảng audit: `docs/demo-mvp.md`. Lượt bị Dừng không ghi đè `brief-<ngày>.json` (bộ nhớ "Có gì mới").
+- [ ] [Work] Lần 12: audit MVP theo `docs/demo-mvp.md` (mock rồi `copilot`), điền bảng audit vào work-feedback. Xem handoff-copilot lần 12.
 - Chuyển sang AG-UI nếu muốn dùng UI component có sẵn.
 
 ## 7. Cấu trúc thư mục đề xuất
