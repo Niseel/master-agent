@@ -248,7 +248,8 @@ export type WriterOutcome =
   | { kind: "running" }
   | { kind: "waiting"; pending: number }
   | { kind: "failed"; error: string; hint?: string | null }
-  | { kind: "nothing-sent"; rejected: Approval[] }
+  /** summary: the agent's own explanation (e.g. no recipient); blocked: calls the gate denied this run. */
+  | { kind: "nothing-sent"; rejected: Approval[]; summary?: string; blocked: number }
   | { kind: "sent"; sent: Approval[]; rejected: Approval[]; summary?: string; link?: string | null };
 
 /**
@@ -271,7 +272,35 @@ export function writerOutcome(view: View, agent: string): WriterOutcome {
   if (av.status === "failed" || av.status === "needs-action" || broken) {
     return { kind: "failed", error: av.error ?? call(broken!)?.error ?? "Lỗi", hint: av.hint ?? call(broken!)?.hint };
   }
-  return { kind: "nothing-sent", rejected };
+  // A rejected write also comes back as a denied call: count only what the gate itself denied.
+  const blocked = av.calls.filter((c) => c.denied && c.startedAt >= av.startedAt! && !mine.some((a) => a.id === c.callId)).length;
+  return { kind: "nothing-sent", rejected, summary: av.action?.summary, blocked };
+}
+
+/**
+ * A work item the user types on the to-do tab, handed to board-writer without a brief item (Work run 11: real briefs
+ * often have no ADO item). Built in the browser; the server checks it like any BriefItem.
+ */
+export const workItemItem = (id: number): BriefItem => ({
+  source: "ado",
+  title: `Work item #${id}`,
+  summary: "Người dùng nhập số work item trên dashboard.",
+  priority: "medium",
+  actionRequired: true,
+  suggestedAction: null,
+  link: null,
+  timestamp: null,
+});
+
+/**
+ * Sign-in chip: Work IQ only reports its state when used ("unknown" before a run). A successful call on that server
+ * in this session shows it signed in (Work run 11: the chip stayed grey after the writer used it).
+ */
+export function authState(status: "ok" | "error" | "mock" | "unknown", view: View, source: string) {
+  if (status !== "unknown") return status;
+  const srv = view.servers[source];
+  const okCall = Object.values(view.agents).some((a) => a.calls.some((c) => c.server === source && c.ok));
+  return okCall && srv?.status !== "needs-action" ? "ok" : status;
 }
 
 /** One line for the node and the detail panel. */
@@ -286,7 +315,7 @@ export function outcomeText(o: WriterOutcome): string {
     case "failed":
       return "Lỗi, không gửi gì";
     case "nothing-sent":
-      return o.rejected.length ? `Bị từ chối ${o.rejected.length} yêu cầu, không gửi gì` : "Không gửi gì";
+      return o.rejected.length ? `Bị từ chối ${o.rejected.length} yêu cầu, không gửi gì` : o.summary ? `Không gửi gì: ${o.summary}` : "Không gửi gì";
     case "sent":
       return `Đã gửi ${o.sent.length}${o.rejected.length ? `, từ chối ${o.rejected.length}` : ""}`;
   }

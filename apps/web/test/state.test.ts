@@ -5,7 +5,8 @@ import { readerAgents, writerAgents } from "@agenthub/core/agents";
 import { qaAgent } from "@agenthub/core/qa";
 import { loadConfig } from "@agenthub/core/config";
 import { MockRuntime } from "@agenthub/core/runtime/mock";
-import { derive, outcomeText, pending, todoGroups, writerOutcome, type AgentInfo, type Timed } from "../src/state.ts";
+import { BriefItem } from "@agenthub/core/brief";
+import { authState, derive, outcomeText, pending, sameItem, todoGroups, workItemItem, writerOutcome, type AgentInfo, type Timed } from "../src/state.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
@@ -134,10 +135,44 @@ test("writer outcome: a rejection shows its reason and 'nothing sent'; an approv
   const o = writerOutcome(v, "board-writer");
   assert.equal(o.kind, "nothing-sent");
   assert.equal(outcomeText(o), "Bị từ chối 1 yêu cầu, không gửi gì");
+  assert.equal(o.kind === "nothing-sent" && o.blocked, 0, "the rejected call is not also a gate block");
 
   const both = await run("approve", rejected);
   const o2 = writerOutcome(derive(infos, both), "board-writer");
   assert.equal(o2.kind, "sent", "only the latest run counts");
   assert.equal(outcomeText(o2), "Đã gửi 1");
   assert.equal(writerOutcome(derive(infos, both), "comms-writer").kind, "idle");
+});
+
+test("writer outcome: no approval asked (Work run 11, no recipient) shows the agent's reason and the blocked calls", () => {
+  const infos: AgentInfo[] = [{ name: "comms-writer", displayName: "Soạn Teams", kind: "writer", servers: ["workiq"], missingConfig: null }];
+  const ev: Timed[] = [
+    { at: 1, event: { type: "agent.started", agent: "comms-writer", at: "" } },
+    { at: 2, event: { type: "tool.started", agent: "comms-writer", server: "builtin", tool: "workiq-call_function_placeholder", callId: "c1" } },
+    { at: 3, event: { type: "tool.completed", callId: "c1", ok: false, error: "Denied by preToolUse hook: x" } },
+    { at: 4, event: { type: "action.result", agent: "comms-writer", summary: "Thiếu người nhận", link: null } },
+    { at: 5, event: { type: "agent.completed", agent: "comms-writer" } },
+  ];
+  const o = writerOutcome(derive(infos, ev), "comms-writer");
+  assert.deepEqual(o, { kind: "nothing-sent", rejected: [], summary: "Thiếu người nhận", blocked: 1 });
+  assert.equal(outcomeText(o), "Không gửi gì: Thiếu người nhận");
+});
+
+test("work item typed by the user: a valid ADO BriefItem for board-writer", () => {
+  const item = workItemItem(1234);
+  assert.ok(BriefItem.safeParse(item).success);
+  assert.equal(item.title, "Work item #1234");
+  assert.ok(sameItem(item, workItemItem(1234)) && !sameItem(item, workItemItem(1235)));
+});
+
+test("sign-in chip: an unknown source turns ok after a successful call on it", () => {
+  const infos: AgentInfo[] = [{ name: "comms-writer", displayName: "x", kind: "writer", servers: ["workiq"], missingConfig: null }];
+  const ev: Timed[] = [
+    { at: 1, event: { type: "agent.started", agent: "comms-writer", at: "" } },
+    { at: 2, event: { type: "tool.started", agent: "comms-writer", server: "workiq", tool: "search_paths", callId: "c1" } },
+  ];
+  assert.equal(authState("unknown", derive(infos, ev), "workiq"), "unknown", "not finished yet");
+  ev.push({ at: 3, event: { type: "tool.completed", callId: "c1", ok: true } });
+  assert.equal(authState("unknown", derive(infos, ev), "workiq"), "ok");
+  assert.equal(authState("error", derive(infos, ev), "workiq"), "error", "a checked state is kept");
 });

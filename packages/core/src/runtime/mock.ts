@@ -3,10 +3,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
-import { AcResult, QaResult } from "../qa.ts";
+import { AcResult, criteriaFromWorkItem, QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
-import { audit, DENIED_PREFIX, decide, denyHint } from "../security.ts";
+import { AFTER_REJECT, audit, DENIED_PREFIX, decide, denyHint, stopAfterReject } from "../security.ts";
 import { ApprovalBox, type AgentRuntime, type RunInput } from "./index.ts";
 
 /** One line of fixtures/scenarios/*.jsonl */
@@ -15,6 +15,8 @@ interface Step {
   /** Replay only if the last approval in this run was approved / rejected. */
   when?: "approved" | "rejected";
   event: HubEvent;
+  /** On a tool.completed step: the tool's result. Used for ac-reader's direct read, like the SDK runtime. */
+  result?: unknown;
 }
 
 /**
@@ -40,8 +42,12 @@ export class MockRuntime implements AgentRuntime {
     // Like sdk.ts: an agent ends with agent.failed OR agent.completed, never both.
     const failed = new Set<string>();
     let lastApproval: "approved" | "rejected" | undefined;
+    const rejected = new Set<string>();
 
-    for (const { delayMs = 0, when, event: ev } of steps) {
+    // ac-reader agents whose criteria came from the tool result (directRead): the scenario's model answer is skipped.
+    const direct = new Set<string>();
+
+    for (const { delayMs = 0, when, event: ev, result } of steps) {
       if (this.stopped) return;
       if (when && when !== lastApproval) continue;
       if (delayMs) await sleep(delayMs);
@@ -52,7 +58,7 @@ export class MockRuntime implements AgentRuntime {
         const agent = byName.get(ev.agent)!;
         // A tool no server offers (model guessed the name) arrives as server "builtin" with the full name.
         const runtimeName = ev.server === "builtin" ? ev.tool : `${ev.server}-${ev.tool}`;
-        const { decision, reason } = decide(agent, runtimeName, ev.args);
+        const { decision, reason } = stopAfterReject(decide(agent, runtimeName, ev.args), rejected.has(agent.name));
         audit(this.cfg.root, { agent: agent.name, tool: runtimeName, args: ev.args ?? {}, decision, reason });
         callAgent.set(ev.callId, agent.name);
         yield ev;
@@ -65,6 +71,7 @@ export class MockRuntime implements AgentRuntime {
           yield { type: "approval.resolved", id: ev.callId, decision: r.decision, ...(r.feedback ? { feedback: r.feedback } : {}) };
           lastApproval = r.decision === "approve" ? "approved" : "rejected";
           if (r.decision === "reject") {
+            rejected.add(agent.name);
             yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + (r.feedback ?? "Người dùng từ chối") };
             callAgent.delete(ev.callId);
           }
@@ -72,16 +79,26 @@ export class MockRuntime implements AgentRuntime {
         }
         if (decision === "deny") {
           // Same error the real runtime reports for a denied call.
-          yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + denyHint(agent) };
+          yield { type: "tool.completed", callId: ev.callId, ok: false, error: DENIED_PREFIX + reason + (reason === AFTER_REJECT ? "" : denyHint(agent)) };
           yield { type: "message", agent: agent.name, text: `Bị chặn: ${reason}` };
           callAgent.delete(ev.callId); // the scenario's own completion for this call is skipped
         }
         continue;
       }
       if (ev.type === "tool.completed") {
-        if (!callAgent.has(ev.callId)) continue;
+        const name = callAgent.get(ev.callId);
+        if (!name) continue;
         callAgent.delete(ev.callId);
+        const r = result !== undefined && byName.get(name)?.directRead ? criteriaFromWorkItem(result) : null;
+        if (r) {
+          yield ev;
+          yield { type: "message", agent: name, text: "Đọc thẳng trường Acceptance Criteria (nguyên văn, không qua model)" };
+          yield { type: "criteria.result", agent: name, ...r };
+          direct.add(name);
+          continue;
+        }
       }
+      if (ev.type === "criteria.result" && direct.has(ev.agent)) continue;
 
       if (ev.type === "approval.requested") {
         const wait = this.approvals.wait(ev.id); // register before yield: the consumer may resolve right away

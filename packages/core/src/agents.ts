@@ -36,6 +36,11 @@ export interface AgentSpec {
   allowedActions?: Record<string, string[]>;
   /** Readers only: "criteria" = return acceptance criteria of one work item (qa.ts AcResult) instead of brief items. */
   output?: "criteria";
+  /**
+   * output "criteria" only: one read call the runtime makes itself before any model turn (no AI Credits). Still goes
+   * through decide() and the audit. The model runs only if this call fails or its result has no work item.
+   */
+  directRead?: { server: string; tool: string; args: Record<string, unknown> };
   /** Testers only: origins (`https://host:port`) the browser may navigate to. */
   allowedOrigins?: string[];
   model?: string;
@@ -272,7 +277,15 @@ export function writerAgents(cfg: HubConfig): AgentSpec[] {
       name: "comms-writer",
       displayName: "Soạn Teams",
       kind: "writer",
-      prompt: writerPrompt("Bạn là agent soạn và gửi tin nhắn Teams (hỏi hoặc chốt quyết định) thay người dùng, qua Work IQ."),
+      // Work run 11: a guessed `workiq-call_function_placeholder` call, then it stopped (no recipient) without asking.
+      // No people/chat lookup tool on purpose (it would read M365 data): the recipient comes from the user's instruction.
+      prompt: writerPrompt(
+        "Bạn là agent soạn và gửi tin nhắn Teams (hỏi hoặc chốt quyết định) thay người dùng, qua Work IQ. " +
+          "Chỉ gọi đúng tên tool có trong danh sách: `search_paths`, `get_schema` (đọc cấu trúc), `create_entity` (gửi, cần duyệt). " +
+          "KHÔNG có tool `call_function`, tra người hay tra chat. Người nhận lấy từ lời giao của người dùng (email hoặc " +
+          "chat) hoặc từ mục; tạo chat/tin nhắn bằng email người nhận, không cần tra id. Không có người nhận thì KHÔNG gọi " +
+          "tool ghi: trả summary \"Thiếu người nhận: hãy ghi email người nhận trong lời giao\" và kết thúc.",
+      ),
       task: "",
       mcpServers: {
         workiq: real
@@ -290,7 +303,7 @@ export function writerAgents(cfg: HubConfig): AgentSpec[] {
         "Bạn là agent cập nhật work item Azure DevOps (trạng thái, comment) thay người dùng. Thêm comment: " +
           "`wit_work_item_comment_write` với `action: \"add\"`. Sửa trường (trạng thái, ...): `wit_work_item_write` với " +
           "`action: \"update\"`. Không tạo work item mới; action khác bị chặn. Xem work item trước bằng `wit_work_item` " +
-          "`action: \"get\"` nếu cần.",
+          "`action: \"get\"` nếu cần. Số work item: trường `link` của mục, hoặc tiêu đề dạng \"Work item #<số>\".",
       ),
       task: "",
       mcpServers: {

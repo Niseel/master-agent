@@ -67,6 +67,14 @@ export function decide(agent: AgentSpec, tool: string, args?: unknown): { decisi
 
 export { DENIED_PREFIX } from "./hints.ts";
 
+/**
+ * Found at Work run 11: after the user rejected a write, the writer sent the same write again (empty body). One reject
+ * ends the run's writes: any later write of that agent in the same run is denied without reaching the approval queue.
+ */
+export const AFTER_REJECT = "Người dùng đã từ chối một yêu cầu ghi trong lượt này: không gửi lại, kết thúc và báo lý do";
+export const stopAfterReject = (d: { decision: Decision; reason: string }, rejected: boolean) =>
+  rejected && d.decision === "ask" ? { decision: "deny" as const, reason: AFTER_REJECT } : d;
+
 /** `https://host:port` of an http(s) URL, else null (file:, javascript:, data:, garbage). */
 export function originOf(url: unknown): string | null {
   if (typeof url !== "string") return null;

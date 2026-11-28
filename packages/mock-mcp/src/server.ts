@@ -70,8 +70,9 @@ if (kind === "workiq") {
   // comms-writer's only write (byok runs, after approval). Fake reply, nothing is sent.
   server.registerTool(
     "create_entity",
-    { description: "Create a WorkIQ entity by POSTing JSON to a parent collection path", inputSchema: { path: z.string(), body: z.unknown() } },
-    async ({ path: p }) => json({ mock: true, path: p, id: "mock-1" }),
+    // Param names seen at Work run 11: `parentUrl` (e.g. "/chats"), `jsonBody`.
+    { description: "Create a WorkIQ entity by POSTing JSON to a parent collection path", inputSchema: { parentUrl: z.string(), jsonBody: z.unknown() } },
+    async ({ parentUrl }) => json({ mock: true, parentUrl, id: "mock-1" }),
   );
   server.registerTool(
     "accept_eula",

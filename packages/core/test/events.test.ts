@@ -30,4 +30,7 @@ test("errors, budget and messages", () => {
     maxAiCredits: 2,
   });
   assert.equal(mapSdkEvent("a", ev("assistant.message_delta", { deltaContent: "x" })), null);
+  // Work run 11: the structured answer showed as raw JSON under "Thông báo".
+  assert.equal(mapSdkEvent("a", ev("assistant.message", { content: '{"link":null,"summary":"x"}' })), null);
+  assert.deepEqual(mapSdkEvent("a", ev("assistant.message", { content: "{ chưa xong" })), { type: "message", agent: "a", text: "{ chưa xong" });
 });

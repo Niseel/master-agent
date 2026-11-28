@@ -59,8 +59,20 @@ export function mapSdkEvent(agent: string, ev: SessionEvent): HubEvent | null {
       // ponytail: assumes 1 AI Credit = 1e9 nano-AIU. [Work] verify against the GitHub billing page.
       return { type: "usage", agent, usedAiCredits: ev.data.totalNanoAiu / 1e9, maxAiCredits: 0 };
     case "assistant.message":
-      return ev.data.content ? { type: "message", agent, text: ev.data.content } : null;
+      // The structured answer ({"summary":...}) arrives as a message too; it is shown from its own event
+      // (action.result, agent.result, ...). Found at Work run 11: raw JSON under "Thông báo".
+      return ev.data.content && !isJsonObject(ev.data.content) ? { type: "message", agent, text: ev.data.content } : null;
     default:
       return null;
+  }
+}
+
+function isJsonObject(text: string) {
+  const t = text.trim();
+  if (!t.startsWith("{")) return false;
+  try {
+    return typeof JSON.parse(t) === "object";
+  } catch {
+    return false;
   }
 }

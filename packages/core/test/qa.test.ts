@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { loadConfig } from "../src/config.ts";
 import type { HubEvent } from "../src/events.ts";
-import { acReader, parseCriteria, PLAYWRIGHT_MCP_VERSION, QA_TOOLS, qaAgent, saveQaReport } from "../src/qa.ts";
+import { acReader, criteriaFromWorkItem, htmlLines, parseCriteria, PLAYWRIGHT_MCP_VERSION, QA_TOOLS, qaAgent, saveQaReport } from "../src/qa.ts";
 import { MockRuntime } from "../src/runtime/mock.ts";
 import { sessionTools } from "../src/runtime/sdk.ts";
 import { decide, originOf } from "../src/security.ts";
@@ -43,6 +43,8 @@ test("qa agent: pinned Playwright MCP, headless, isolated, one allowed origin, f
   assert.match(qa.task, /1\. Mục cần xử lý[\s\S]*3\. Footer/);
   assert.match(qa.task, /Gọi từng tool MỘT/);
   assert.match(qa.task, /target=_blank/);
+  assert.match(qa.task, /browser_take_screenshot` \{target: <ref/, "screenshot of the criterion's element (Work run 11: all the same)");
+  assert.match(qa.task, /CSS selector trong `target` của `browser_snapshot`/);
   assert.throws(() => qaAgent({ root }, { ...input, url: "file:///x" }, "/tmp/qa"));
 });
 
@@ -89,6 +91,17 @@ test("qa report: no result means every criterion is blocked, with the error", ()
   assert.ok(html.includes("http://x/&lt;b&gt;") && !html.includes("http://x/<b>"), "escaped");
 });
 
+test("criteria from a work item: verbatim, split by list item / line, entities decoded", () => {
+  const html = '<div>Trang có nút &quot;Hoàn tiền&quot;</div><ul><li>Số tiền &gt; 0 &amp; ≤ đã trả</li><li> </li></ul>1. Nhãn &#39;Chờ duyệt&#39;<br>AC4: Ghi log';
+  assert.deepEqual(parseCriteria(htmlLines(html)), ['Trang có nút "Hoàn tiền"', "Số tiền > 0 & ≤ đã trả", "Nhãn 'Chờ duyệt'", "Ghi log"]);
+  const item = { id: 7, fields: { "System.Title": "T", "Microsoft.VSTS.Common.AcceptanceCriteria": "<ul><li>a</li><li>b</li></ul>" } };
+  const mcp = { content: [{ type: "text", text: JSON.stringify(item) }] };
+  assert.deepEqual(criteriaFromWorkItem(mcp), { title: "T", criteria: ["a", "b"] }, "MCP result with JSON text");
+  assert.deepEqual(criteriaFromWorkItem({ structuredContent: item }), { title: "T", criteria: ["a", "b"] });
+  assert.deepEqual(criteriaFromWorkItem({ id: 7, fields: { "System.Title": "T" } }), { title: "T", criteria: [] }, "no field = no criteria");
+  assert.equal(criteriaFromWorkItem({ content: [{ type: "text", text: "Work item 7 not found" }] }), null, "not a work item: fall back to the model");
+});
+
 test("ac-reader: read-only ADO (header kept), only wit_work_item; mock returns criteria", async () => {
   const real = acReader({ ...(await loadConfig(root)), runtime: "copilot", ado: { org: "o", project: "p" } }, 1234);
   assert.equal((real.mcpServers.ado as { headers?: Record<string, string> }).headers?.["X-MCP-Readonly"], "true");
@@ -102,5 +115,12 @@ test("ac-reader: read-only ADO (header kept), only wit_work_item; mock returns c
   const events: HubEvent[] = [];
   for await (const e of new MockRuntime(cfg).run({ prompt: "x", agents: [acReader(cfg, 1234)], budget: 30, scenario: "ac-reader" })) events.push(e);
   const r = events.find((e) => e.type === "criteria.result") as { criteria: string[] };
-  assert.equal(r.criteria.length, 3);
+  assert.deepEqual(r.criteria, [
+    'Trang đơn hàng có nút "Hoàn tiền một phần" với đơn đã thanh toán',
+    "Nhập số tiền lớn hơn số đã thanh toán thì báo lỗi, không cho gửi",
+    'Hoàn tiền từ 2 triệu trở lên hiện nhãn "Chờ kế toán duyệt"',
+  ], "the field's text, not the model's answer");
+  assert.equal(events.filter((e) => e.type === "criteria.result").length, 1);
+  assert.deepEqual(real.directRead, { server: "ado", tool: "wit_work_item", args: { action: "get", id: 1234, project: "p" } });
+  assert.equal(decide(real, "ado-wit_work_item", real.directRead!.args).decision, "allow", "the direct read passes the same gate");
 });

@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   CopilotClient,
   type CopilotSession,
+  type JsonValue,
   type PermissionRequest,
   type PermissionRequestResult,
   type SessionConfig,
@@ -11,10 +12,10 @@ import {
 import type { AgentSpec } from "../agents.ts";
 import { az } from "../auth.ts";
 import { ActionResult, AgentResult, dropEmpty, droppedText } from "../brief.ts";
-import { AcResult, QaResult } from "../qa.ts";
+import { AcResult, criteriaFromWorkItem, QaResult } from "../qa.ts";
 import type { HubConfig } from "../config.ts";
 import { mapSdkEvent, type HubEvent } from "../events.ts";
-import { audit, decide, denyHint } from "../security.ts";
+import { AFTER_REJECT, audit, decide, denyHint, stopAfterReject } from "../security.ts";
 import { ApprovalBox, EventQueue, type AgentRuntime, type RunInput } from "./index.ts";
 
 type PreToolUseHookOutput = Exclude<Awaited<ReturnType<NonNullable<SessionHooks["onPreToolUse"]>>>, void>;
@@ -91,6 +92,8 @@ export class SdkRuntime implements AgentRuntime {
   private approvals = new ApprovalBox();
   /** toolCallIds the user approved in onPreToolUse; onPermissionRequest lets only these through for writers. */
   private approvedCalls = new Set<string>();
+  /** Agents the user rejected a write of: their later writes are denied (stopAfterReject). Hub makes one runtime per run. */
+  private rejected = new Set<string>();
 
   constructor(private cfg: HubConfig) {}
 
@@ -155,7 +158,8 @@ export class SdkRuntime implements AgentRuntime {
         const r = await s.sendAndWait({ prompt }, ActionResult, long);
         q.push({ type: "action.result", agent: a.name, ...r });
       } else if (a.output === "criteria") {
-        q.push({ type: "criteria.result", agent: a.name, ...(await s.sendAndWait({ prompt }, AcResult, this.cfg.timeoutMs)) });
+        const r = (await this.directCriteria(s, a, q)) ?? (await s.sendAndWait({ prompt }, AcResult, this.cfg.timeoutMs));
+        q.push({ type: "criteria.result", agent: a.name, ...r });
       } else if (a.kind === "tester") {
         q.push({ type: "qa.result", agent: a.name, result: await s.sendAndWait({ prompt }, QaResult, long) });
       } else {
@@ -175,6 +179,31 @@ export class SdkRuntime implements AgentRuntime {
     }
   }
 
+  /**
+   * `directRead` of an ac-reader: call the tool without a model turn (SDK `rpc.mcp.callTool`, experimental: [Work]
+   * verify) and split the field in code, so the criteria stay verbatim. null = fall back to the model.
+   */
+  private async directCriteria(s: CopilotSession, a: AgentSpec, q: EventQueue<HubEvent>): Promise<AcResult | null> {
+    if (!a.directRead) return null;
+    const { server, tool, args } = a.directRead;
+    const { decision, reason } = decide(a, `${server}-${tool}`, args);
+    audit(this.cfg.root, { agent: a.name, tool: `${server}-${tool}`, args, decision, reason });
+    if (decision !== "allow") return null;
+    const callId = randomUUID();
+    q.push({ type: "tool.started", agent: a.name, server, tool, callId });
+    let r: AcResult | null = null;
+    try {
+      const res = await s.rpc.mcp.callTool({ serverName: server, toolName: tool, arguments: args as JsonValue });
+      const error = !res ? "Không có kết quả" : res.isError ? JSON.stringify(res.content ?? res).slice(0, 300) : undefined;
+      q.push({ type: "tool.completed", callId, ok: !error, ...(error ? { error } : {}) });
+      if (!error) r = criteriaFromWorkItem(res);
+    } catch (e) {
+      q.push({ type: "tool.completed", callId, ok: false, error: errMsg(e) });
+    }
+    q.push({ type: "message", agent: a.name, text: r ? "Đọc thẳng trường Acceptance Criteria (nguyên văn, không qua model)" : "Không đọc thẳng được work item: để model đọc" });
+    return r;
+  }
+
   /** onPreToolUse: the approval gate. Write tools wait for the user on the approval queue. */
   private async gate(
     a: AgentSpec,
@@ -183,11 +212,11 @@ export class SdkRuntime implements AgentRuntime {
     callId: string | undefined,
     q: EventQueue<HubEvent>,
   ): Promise<PreToolUseHookOutput> {
-    const { decision, reason } = decide(a, tool, args);
+    const { decision, reason } = stopAfterReject(decide(a, tool, args), this.rejected.has(a.name));
     audit(this.cfg.root, { agent: a.name, tool, args, decision, reason });
     if (decision === "deny") q.push({ type: "message", agent: a.name, text: `Bị chặn: ${reason}` });
     if (decision === "allow") return { permissionDecision: decision, permissionDecisionReason: reason };
-    if (decision === "deny") return { permissionDecision: decision, permissionDecisionReason: reason + denyHint(a) };
+    if (decision === "deny") return { permissionDecision: decision, permissionDecisionReason: reason === AFTER_REJECT ? reason : reason + denyHint(a) };
 
     const id = callId ?? randomUUID();
     const wait = this.approvals.wait(id);
@@ -196,6 +225,7 @@ export class SdkRuntime implements AgentRuntime {
     q.push({ type: "approval.resolved", id, decision: r.decision, ...(r.feedback ? { feedback: r.feedback } : {}) });
     audit(this.cfg.root, { agent: a.name, tool, args, decision: r.decision, reason: r.feedback ?? "user" });
     if (r.decision === "reject") {
+      this.rejected.add(a.name);
       return { permissionDecision: "deny", permissionDecisionReason: r.feedback ?? "Người dùng từ chối" };
     }
     this.approvedCalls.add(id);

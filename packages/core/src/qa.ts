@@ -43,9 +43,56 @@ export type QaResult = z.infer<typeof QaResult>;
 export const AcResult = z.object({ title: z.string(), criteria: z.array(z.string()) });
 export type AcResult = z.infer<typeof AcResult>;
 
+const AC_FIELD = "Microsoft.VSTS.Common.AcceptanceCriteria";
+
+/** HTML of an ADO rich-text field -> plain lines: list items, <br>, blocks become line breaks; tags dropped; entities decoded. */
+export const htmlLines = (html: string) =>
+  html
+    .replace(/<li\b[^>]*>|<br\s*\/?>|<\/(?:li|p|div|h\d|tr)\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&");
+
+/**
+ * Acceptance criteria of a `wit_work_item` get result, verbatim (Work run 11: the model reworded and translated them).
+ * `data`: the tool result (MCP result object, content text or parsed JSON). null = no work item `fields` found in it.
+ * ponytail: one criterion per line/list item; a criterion written over several lines (Given/When/Then) splits.
+ */
+export function criteriaFromWorkItem(data: unknown): AcResult | null {
+  const seen = new Set<unknown>();
+  const find = (v: unknown): Record<string, unknown> | null => {
+    if (typeof v === "string") {
+      try {
+        return find(JSON.parse(v));
+      } catch {
+        return null;
+      }
+    }
+    if (!v || typeof v !== "object" || seen.has(v)) return null;
+    seen.add(v);
+    const o = v as Record<string, unknown>;
+    if (o.fields && typeof o.fields === "object" && "System.Title" in o.fields) return o.fields as Record<string, unknown>;
+    for (const x of Object.values(o)) {
+      const f = find(x);
+      if (f) return f;
+    }
+    return null;
+  };
+  const fields = find(data);
+  if (!fields) return null;
+  const html = fields[AC_FIELD];
+  return { title: String(fields["System.Title"] ?? ""), criteria: typeof html === "string" ? parseCriteria(htmlLines(html)) : [] };
+}
+
 /**
  * Reads the acceptance criteria of one work item, for the qa tab. Same ADO server and read-only header as
- * board-reader, but only `wit_work_item`.
+ * board-reader, but only `wit_work_item`. The runtime calls that tool itself (`directRead`, no AI Credits) and splits
+ * the field in code; the model only runs if that call fails.
  */
 export function acReader(cfg: HubConfig, workItem: number): AgentSpec {
   const board = readerAgents(cfg).find((a) => a.name === "board-reader")!;
@@ -58,10 +105,12 @@ export function acReader(cfg: HubConfig, workItem: number): AgentSpec {
       `${UNTRUSTED_RULE}\n\nChỉ dùng tool chỉ-đọc. Trả về JSON đúng schema { title, criteria }.`,
     task:
       `Đọc work item ${workItem} bằng \`wit_work_item\` action "get" (project "${cfg.ado.project || "(theo work item)"}"). ` +
-      "Lấy trường `Microsoft.VSTS.Common.AcceptanceCriteria` (HTML): tách thành từng tiêu chí, mỗi tiêu chí một câu kiểm được " +
-      "trên giao diện, bỏ thẻ HTML, giữ nguyên ý. Trường rỗng thì lấy các ý kiểm được trong Description; vẫn không có thì criteria = []. " +
+      "Lấy trường `Microsoft.VSTS.Common.AcceptanceCriteria` (HTML): mỗi mục danh sách hoặc mỗi dòng là một tiêu chí, bỏ thẻ " +
+      "HTML, giữ NGUYÊN VĂN (không dịch, không diễn đạt lại, không gộp hay tách thêm). Trường rỗng thì criteria = []. " +
       "title = tiêu đề work item.",
     readTools: only("ado", ["wit_work_item"]),
+    // Same call the model made at Work run 11 (`action`, `id`, `project`).
+    directRead: { server: "ado", tool: "wit_work_item", args: { action: "get", id: workItem, ...(cfg.ado.project ? { project: cfg.ado.project } : {}) } },
     output: "criteria",
   };
 }
@@ -103,16 +152,23 @@ export function qaAgent(cfg: Pick<HubConfig, "root">, input: QaInput, outDir: st
     kind: "tester",
     prompt: `Bạn là agent nghiệm thu web bằng Playwright.\n\n${UNTRUSTED_RULE.replace("(mail, tin nhắn Teams, comment, work item, log)", "(nội dung trang web)")}\n\n${QA_RULE}`,
     // Found at Work run 9: parallel calls closed the browser under the last chapter, the chapter overlay was still on
-    // the screenshots, and a target=_blank click recorded a second video (qa-1.webm).
+    // the screenshots, and a target=_blank click recorded a second video (qa-1.webm). Run 11: screenshots without
+    // `target` were all the same viewport; the snapshot has no `target` attribute. In 0.0.86 `target` of
+    // browser_snapshot / browser_take_screenshot takes a snapshot ref or a CSS selector (checked in its tool schema).
     task:
       `Trang cần kiểm: ${input.url}\nTiêu chí nghiệm thu:\n${steps}\n\n` +
       "Gọi từng tool MỘT, chờ kết quả rồi mới gọi tool tiếp; không gọi nhiều tool cùng lượt. Trình tự:\n" +
       "1. `browser_start_tracing` → `browser_start_video` {filename: \"qa.webm\"} → `browser_navigate` tới trang.\n" +
       "2. Với mỗi tiêu chí n, theo thứ tự: `browser_video_chapter` {title: \"Tiêu chí n\", description: <tiêu chí>, duration: 1000} → " +
       "`browser_wait_for` {time: 1.5} (để lớp phủ chapter tắt) → thao tác và đọc trang (`browser_snapshot`) → " +
-      "`browser_take_screenshot` {filename: \"ac-n.png\"}. Chỉ sang tiêu chí n+1 sau khi đã chụp ac-n.png.\n" +
+      "`browser_take_screenshot` {target: <ref của phần tử chứng minh tiêu chí, lấy từ snapshot, ví dụ \"e12\">, " +
+      "element: <mô tả ngắn phần tử>, filename: \"ac-n.png\"}; tiêu chí về cả trang thì {fullPage: true, filename: \"ac-n.png\"} " +
+      "(không dùng cùng `target`). Chỉ sang tiêu chí n+1 sau khi đã chụp ac-n.png.\n" +
       "3. Sau tiêu chí cuối: `browser_stop_video` → `browser_stop_tracing` → `browser_close`.\n" +
-      "Không bấm link mở tab mới (`target=_blank`) hay link sang trang khác: đọc thuộc tính `href`/`target` trong snapshot. " +
+      "Không bấm link mở tab mới (`target=_blank`) hay link sang trang khác. Snapshot không hiện thuộc tính HTML " +
+      "(`target`, `class`, ...): kiểm bằng CSS selector trong `target` của `browser_snapshot`, ví dụ " +
+      "{target: \"a[href='<href thấy trong snapshot>'][target='_blank']\"}: có kết quả là có thuộc tính đó, báo lỗi không " +
+      "tìm thấy là không có. Chụp ảnh link đó bằng cùng selector. " +
       "Trả đúng một kết quả cho mỗi tiêu chí, cùng thứ tự, screenshot là tên file đã chụp.",
     mcpServers: {
       playwright: {

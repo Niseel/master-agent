@@ -1,9 +1,11 @@
 {"event":{"type":"agent.started","agent":"comms-writer","at":"2026-11-23T08:10:00Z"}}
+{"delayMs":100,"event":{"type":"tool.started","agent":"comms-writer","server":"builtin","tool":"workiq-call_function_placeholder","callId":"w0","args":{}}}
 {"delayMs":150,"event":{"type":"tool.started","agent":"comms-writer","server":"workiq","tool":"search_paths","callId":"w1","args":{"query":"teams chat message"}}}
 {"delayMs":150,"event":{"type":"tool.completed","callId":"w1","ok":true}}
-{"delayMs":100,"event":{"type":"tool.started","agent":"comms-writer","server":"workiq","tool":"create_entity","callId":"w2","args":{"path":"/me/chats/t1/messages","body":{"content":"Chào B, mình chốt: hoàn tiền một phần dưới 2 triệu không cần kế toán duyệt, từ 2 triệu trở lên thì cần. Mình sẽ cập nhật acceptance criteria của story #1234."}}}}
+{"delayMs":100,"event":{"type":"tool.started","agent":"comms-writer","server":"workiq","tool":"create_entity","callId":"w2","args":{"parentUrl":"/chats/t1/messages","jsonBody":{"body":{"content":"Chào B, mình chốt: hoàn tiền một phần dưới 2 triệu không cần kế toán duyệt, từ 2 triệu trở lên thì cần. Mình sẽ cập nhật acceptance criteria của story #1234."}}}}}
 {"delayMs":150,"when":"approved","event":{"type":"tool.completed","callId":"w2","ok":true}}
 {"delayMs":50,"when":"approved","event":{"type":"action.result","agent":"comms-writer","summary":"Đã gửi trả lời cho B trong Team Orders: chốt ngưỡng 2 triệu cần kế toán duyệt.","link":"https://teams.microsoft.com/l/message/t1"}}
+{"delayMs":100,"when":"rejected","event":{"type":"tool.started","agent":"comms-writer","server":"workiq","tool":"create_entity","callId":"w3","args":{"parentUrl":"/chats/t1/messages","jsonBody":{}}}}
 {"delayMs":50,"when":"rejected","event":{"type":"action.result","agent":"comms-writer","summary":"Không gửi: người dùng từ chối tin nhắn nháp.","link":null}}
 {"delayMs":50,"event":{"type":"usage","agent":"comms-writer","usedAiCredits":3.2,"maxAiCredits":30}}
 {"event":{"type":"agent.completed","agent":"comms-writer","durationMs":900,"tokens":2100}}
