@@ -10,7 +10,7 @@ export interface HubConfig {
   root: string;
   /** Default model. null = let Copilot pick. */
   model: string | null;
-  /** Credit budget for one brief, split evenly across agents (sessionLimits.maxAiCredits). */
+  /** Credit budget for one brief, split evenly across agents (SDK `execution.limits.maxAiCredits`). */
   maxAiCredits: number;
   /** Per-agent timeout. */
   timeoutMs: number;

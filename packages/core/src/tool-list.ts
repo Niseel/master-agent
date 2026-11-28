@@ -3,7 +3,7 @@
  * Runtime mock: the built-in gates' mock servers only (no real service is contacted). Otherwise: the Copilot SDK
  * connects the server (Entra sign-in through mcpAuth, like `pnpm list-tools`) and lists its tools.
  */
-import type { MCPServerConfig } from "@github/copilot-sdk";
+import type { MCPServerConfig } from "@microsoft/copilot-sdk";
 import type { HubConfig } from "./config.ts";
 import { looksLikeWrite } from "./security.ts";
 
@@ -31,19 +31,17 @@ export async function listGateTools(cfg: HubConfig, key: string, server: MCPServ
       await client.close();
     }
   }
-  const { CopilotClient } = await import("@github/copilot-sdk");
-  const { mcpAuth, waitForMcp } = await import("./runtime/sdk.ts");
-  const client = new CopilotClient();
+  const { mcpAuth, newClient, waitForMcp } = await import("./runtime/sdk.ts");
+  const client = newClient();
   await client.start();
   try {
     const session = await client.createSession({
       clientName: "agent-hub",
-      mcpServers: { [key]: server },
-      availableTools: [],
-      includedBuiltinAgents: [],
-      skipCustomInstructions: true,
-      onPermissionRequest: () => ({ kind: "reject", feedback: "Chỉ lấy danh sách tool" }),
-      onMcpAuthRequest: mcpAuth,
+      mcp: { servers: { [key]: server }, onAuthRequest: mcpAuth },
+      tools: { availableTools: [] },
+      agents: { includedBuiltinAgents: [] },
+      instructions: { skipCustomInstructions: true },
+      permissions: { onRequest: () => ({ kind: "reject", feedback: "Chỉ lấy danh sách tool" }) },
     });
     try {
       await waitForMcp(session, [key], 90_000, 2000);

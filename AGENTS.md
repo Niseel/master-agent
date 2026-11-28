@@ -12,7 +12,7 @@
   `docs/work-feedback.md` (file, lý do, lỗi/mã lỗi thật dạng cấu trúc). Home sửa.
 
 - TypeScript strict, ESM, Node 22, pnpm. Chạy `pnpm test` và `pnpm typecheck` trước khi commit.
-- API SDK: đối chiếu `node_modules/@github/copilot-sdk/dist/types.d.ts`, không đoán.
+- API SDK: đối chiếu `node_modules/@microsoft/copilot-sdk/dist/types.d.ts`, không đoán.
 - Không thêm tool ghi vào agent (mọi agent trong `packages/core/src/agents.ts` chỉ đọc).
   Mọi thay đổi về quyền phải ghi rõ trong commit message.
 - Không dùng `approveAll`. Mọi quyết định tool đi qua `decide()` trong `packages/core/src/security.ts`.

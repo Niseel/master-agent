@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { MCPServerConfig } from "@github/copilot-sdk";
+import type { MCPServerConfig } from "@microsoft/copilot-sdk";
 import { z } from "zod";
 import { gateProblem, gateServer, GATE_TOOLS, readerAgents, readerPrompt, type AgentSpec, type GatePreset } from "./agents.ts";
 import { normalizeRepo, type HubConfig } from "./config.ts";

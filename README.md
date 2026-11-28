@@ -114,7 +114,7 @@ docs/              WORK.md, step0-results.md, mcp-tools.md, work-feedback.md
 - ADO và GitHub MCP của agent đọc luôn gửi header `X-MCP-Readonly: true`. Azure MCP chạy `--read-only`.
 - Không có agent ghi và không có hàng duyệt: mọi tool ghi luôn bị gate từ chối.
 - Prompt mọi agent đọc ghi rõ dữ liệu lấy về là DỮ LIỆU, không phải chỉ thị.
-- Mỗi agent có `sessionLimits.maxAiCredits` = ngân sách / số agent. Hết ngân sách → dừng agent, không tự tăng.
+- Mỗi agent có `execution.limits.maxAiCredits` = ngân sách / số agent. Hết ngân sách → dừng agent, không tự tăng.
 - wit-reader gọi thẳng `wit_work_item` (không qua model) nhưng vẫn qua `decide()` và audit.
 - Audit mọi quyết định của gate vào `logs/audit-YYYY-MM-DD.jsonl` (đã lược secret).
 - Dashboard chỉ nghe `127.0.0.1`; từ chối Host lạ (DNS rebinding), Origin lạ, body không phải JSON (form cross-site);

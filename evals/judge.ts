@@ -6,11 +6,11 @@
  *   openai:<model>      OPENAI_API_KEY
  *   ollama:<model>      local Ollama; needs `pnpm add -Dw ollama`
  */
-import { CopilotClient } from "@github/copilot-sdk";
-import type { ResponseSchema } from "@github/copilot-sdk";
+import type { CopilotClient, ResponseSchema } from "@microsoft/copilot-sdk";
 import { AnthropicModel, DeepEvalBaseLLM, OllamaModel, OpenAIModel, type GenerationResult } from "deepeval/models";
 import type { ZodType } from "zod";
 import { MIN_SESSION_CREDITS } from "../packages/core/src/agents.ts";
+import { newClient } from "../packages/core/src/runtime/sdk.ts";
 
 const TIMEOUT_MS = 120_000;
 
@@ -28,18 +28,18 @@ export class CopilotJudge extends DeepEvalBaseLLM {
 
   async generate<T = string>(prompt: string, schema?: ZodType<T>): Promise<GenerationResult<T>> {
     this.client ??= (async () => {
-      const c = new CopilotClient();
+      const c = newClient();
       await c.start();
       return c;
     })();
     const s = await (await this.client).createSession({
       clientName: "agent-hub-eval",
       model: this.model,
-      availableTools: [],
-      includedBuiltinAgents: [],
-      skipCustomInstructions: true,
-      sessionLimits: { maxAiCredits: MIN_SESSION_CREDITS },
-      onPermissionRequest: () => ({ kind: "reject", feedback: "Judge không gọi tool" }),
+      tools: { availableTools: [] },
+      agents: { includedBuiltinAgents: [] },
+      instructions: { skipCustomInstructions: true },
+      execution: { limits: { maxAiCredits: MIN_SESSION_CREDITS } },
+      permissions: { onRequest: () => ({ kind: "reject", feedback: "Judge không gọi tool" }) },
     });
     try {
       const output = schema

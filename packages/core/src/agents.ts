@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { MCPServerConfig } from "@github/copilot-sdk";
+import type { MCPServerConfig } from "@microsoft/copilot-sdk";
 import type { HubConfig } from "./config.ts";
 
 /** A reader agent: one Copilot session that sees only its own MCP servers and read tools. */

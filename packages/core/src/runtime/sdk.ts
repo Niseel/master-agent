@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   CopilotClient,
+  RuntimeConnection,
   type CopilotSession,
+  type CreateSessionOptions,
   type JsonValue,
   type PermissionRequest,
   type PermissionRequestResult,
-  type SessionConfig,
   type SessionHooks,
-} from "@github/copilot-sdk";
+} from "@microsoft/copilot-sdk";
 import { MIN_SESSION_CREDITS, windowPrompt, type AgentSpec } from "../agents.ts";
 export { MIN_SESSION_CREDITS };
 import { az } from "../auth.ts";
@@ -33,10 +34,28 @@ const ENTRA_MCP: Record<string, { scope: string; configDirEnv: string }> = {
 };
 
 /**
- * onMcpAuthRequest: get a token from the logged-in `az` CLI. Unlisted servers are cancelled,
+ * SDK v2 client. `coding-agent` is the v1 default mode (v2 makes it explicit); built-in tools stay hidden by each
+ * session's `tools.availableTools`. Spawned stdio keeps v1's separate runtime process (v2 defaults to in-process).
+ */
+export const newClient = () => new CopilotClient({ mode: "coding-agent", runtime: RuntimeConnection.forSpawnedStdio() });
+
+/**
+ * runtime byok with ANTHROPIC_API_KEY: every model call goes to Anthropic (v1 `provider`). v2 has no singular
+ * provider: one named connection, set as default, with the Copilot API (CAPI) models off.
+ */
+export function byokOptions(cfg: HubConfig): Pick<CreateSessionOptions, "inference" | "github"> {
+  if (cfg.runtime !== "byok" || !cfg.byok.apiKey) return {};
+  return {
+    inference: { providers: [{ name: "anthropic", type: "anthropic", baseUrl: cfg.byok.baseUrl, apiKey: cfg.byok.apiKey }], defaultProvider: "anthropic" },
+    github: { capi: { enabled: false } },
+  };
+}
+
+/**
+ * mcp.onAuthRequest: get a token from the logged-in `az` CLI. Unlisted servers are cancelled,
  * so no MCP server can obtain a token for another resource.
  */
-export const mcpAuth: NonNullable<SessionConfig["onMcpAuthRequest"]> = async (req) => {
+export const mcpAuth: NonNullable<NonNullable<CreateSessionOptions["mcp"]>["onAuthRequest"]> = async (req) => {
   const srv = ENTRA_MCP[new URL(req.serverUrl).origin];
   if (!srv) return { kind: "cancelled" };
   try {
@@ -90,10 +109,10 @@ export class SdkRuntime implements AgentRuntime {
     const q = new EventQueue<HubEvent>();
     void (async () => {
       try {
-        this.client ??= new CopilotClient();
+        this.client ??= newClient();
         await this.client.start();
         const live = input.agents.filter((a) => !a.missingConfig).length || 1;
-        // The runtime rejects sessionLimits.maxAiCredits below MIN_SESSION_CREDITS.
+        // The runtime rejects execution.limits.maxAiCredits below MIN_SESSION_CREDITS.
         const perAgent = Math.max(MIN_SESSION_CREDITS, input.budget / live);
         await Promise.allSettled(input.agents.map((a) => this.runAgent(a, input, perAgent, q)));
       } catch (e) {
@@ -109,26 +128,21 @@ export class SdkRuntime implements AgentRuntime {
     if (a.missingConfig) return q.push({ type: "agent.failed", agent: a.name, error: a.missingConfig });
     const t0 = Date.now();
     q.push({ type: "agent.started", agent: a.name, at: new Date().toISOString() });
-    const { byok } = this.cfg;
     let session: CopilotSession | undefined;
     try {
       session = await this.client!.createSession({
         clientName: "agent-hub",
         model: a.model ?? this.cfg.model ?? undefined,
-        provider:
-          this.cfg.runtime === "byok" && byok.apiKey
-            ? { type: "anthropic", baseUrl: byok.baseUrl, apiKey: byok.apiKey }
-            : undefined,
+        ...byokOptions(this.cfg),
         systemMessage: { mode: "append", content: a.prompt },
-        mcpServers: a.mcpServers,
+        mcp: { servers: a.mcpServers, onAuthRequest: mcpAuth },
         // No built-in shell/file/web tools: only the agent's allowlisted MCP tools, and no built-in sub-agents.
-        availableTools: sessionTools(a),
-        includedBuiltinAgents: [],
-        skipCustomInstructions: true,
-        sessionLimits: { maxAiCredits: budget },
-        hooks: { onPreToolUse: (h) => this.gate(a, h.toolName, h.toolArgs, q) },
-        onPermissionRequest: (req) => this.permission(a, req),
-        onMcpAuthRequest: mcpAuth,
+        tools: { availableTools: sessionTools(a) },
+        agents: { includedBuiltinAgents: [] },
+        instructions: { skipCustomInstructions: true },
+        execution: { limits: { maxAiCredits: budget } },
+        hooks: { handlers: { onPreToolUse: (h) => this.gate(a, h.toolName, h.toolArgs, q) } },
+        permissions: { onRequest: (req) => this.permission(a, req) },
       });
       this.sessions.add(session);
       const s = session;
@@ -187,7 +201,7 @@ export class SdkRuntime implements AgentRuntime {
     return r;
   }
 
-  /** onPreToolUse: the tool gate. Readers only: allow or deny, never wait. */
+  /** hooks.handlers.onPreToolUse: the tool gate. Readers only: allow or deny, never wait. */
   private gate(a: AgentSpec, tool: string, args: unknown, q: EventQueue<HubEvent>): PreToolUseHookOutput {
     const { decision, reason } = decide(a, tool);
     audit(this.cfg.root, { agent: a.name, tool, args, decision, reason });
@@ -196,7 +210,7 @@ export class SdkRuntime implements AgentRuntime {
     return { permissionDecision: decision, permissionDecisionReason: reason + denyHint(a) };
   }
 
-  /** Second layer: runtime permission prompts. Only MCP tools the gate allows pass. */
+  /** Second layer (permissions.onRequest): runtime permission prompts. Only MCP tools the gate allows pass. */
   private permission(a: AgentSpec, req: PermissionRequest): PermissionRequestResult {
     if (req.kind !== "mcp") return { kind: "reject", feedback: "Agent Hub chỉ cho phép tool MCP" };
     const { decision, reason } = decide(a, `${req.serverName}-${req.toolName}`);

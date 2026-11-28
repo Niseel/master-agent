@@ -43,6 +43,10 @@ event `tool.execution_start` và phần `=== reply ===`.
 - Lỗi kiểu policy/không có quyền Copilot CLI → org chưa bật **Copilot CLI policy**. Ghi lỗi (đã xoá
   tên org) vào step0-results.md, hỏi admin GitHub org.
 - Chưa chọn được model → thêm `AGENTHUB_MODEL=<model org cho phép>` vào `.env`.
+- SDK là `@microsoft/copilot-sdk` 2.x (từ 2026-11-28; `@github/copilot-sdk` đã deprecated). Runtime chạy ở process
+  riêng (`RuntimeConnection.forSpawnedStdio()`). Lỗi kiểu "protocol" / "negotiation" khi khởi động → SDK và runtime
+  lệch phiên bản: chạy lại `corepack pnpm install`, ghi phiên bản trong `node_modules/@microsoft/copilot-sdk/package.json`
+  (`version`, `copilotCliVersion`). Kiểm đủ: handoff-copilot §2a.
 
 ## 3. Từng MCP server
 

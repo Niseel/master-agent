@@ -230,7 +230,7 @@ Judge chọn bằng `AGENTHUB_JUDGE` (`evals/judge.ts`): `copilot[:model]` (mặ
 - [ ] Trạng thái đăng nhập của mọi cổng đúng với thực tế ở Work. — [Work].
 - [ ] Check việc ra card đúng §5 ở Work với 5 agent mặc định. — [Work].
 - [ ] Eval đạt ngưỡng §7 ở Work. — cần Task đã verify (Thành).
-- [x] `pnpm test` + `pnpm typecheck` xanh; mọi tính năng chạy được với `mock`. — 63/63 (2026-11-28).
+- [x] `pnpm test` + `pnpm typecheck` xanh; mọi tính năng chạy được với `mock`. — 64/64 (2026-11-28, sau khi chuyển SDK v2).
 
 ## 10. Đã chốt thêm (2026-11-28)
 

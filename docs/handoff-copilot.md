@@ -14,7 +14,7 @@
 - Mọi bước đi qua UI như người dùng, hoặc qua lệnh `corepack pnpm` ghi dưới đây.
 - **Không commit `agenthub.local.json`** (có tên org, project, workspace). Đã có trong `.gitignore`.
 
-## 1. Home đã làm gì (mock, 63 test xanh)
+## 1. Home đã làm gì (mock, 64 test xanh)
 
 M1 ở Home xong theo [milestone-1.md](milestone-1.md) §8:
 - **Card việc cần làm** (khung dưới sơ đồ): gộp trùng giữa nguồn, xếp ô Eisenhower, todo list sửa được, Đã xong / Ẩn,
@@ -24,15 +24,18 @@ M1 ở Home xong theo [milestone-1.md](milestone-1.md) §8:
 - **Cổng và agent trên UI**: nút "＋ Thêm cổng / agent", tab **Cấu hình**, nối dây, "Lấy danh sách tool", tick tool.
 - **Đăng nhập trên UI**: tab **Đăng nhập** có nút cho từng cổng; mã thiết bị và link hiện trên UI.
 - **Eval**: `pnpm eval`.
+- **SDK v2**: `@github/copilot-sdk` 1.0.34 (deprecated) đổi sang `@microsoft/copilot-sdk` 2.0.4. Hành vi giữ nguyên
+  (gate 2 lớp, chỉ tool trong allowlist, trần credit từng agent, gọi thẳng tool cho wit-reader). Ở Home chỉ kiểm được
+  mock và runtime khởi động / tắt; lời gọi Copilot thật kiểm ở §2a.
 
 Chưa kiểm với dịch vụ thật: mọi thứ ở §2 dưới đây.
 
 ## 2. Việc ở Work (theo thứ tự)
 
-1. **Cài đặt:** `git pull`, `corepack pnpm install`, `corepack pnpm typecheck`, `corepack pnpm test` (63 test).
-   Có gói mới: `driver.js`, `deepeval`, `@napi-rs/keyring` (thư viện native, bản dựng sẵn cho Windows), `zod`. Nếu registry
-   công ty chặn gói nào thì ghi tên gói + mã lỗi và dừng. Test đỏ thì dừng.
-   Ghi thêm: lúc cài có cảnh báo "deprecated @github/copilot-sdk … migrate to @microsoft/copilot-sdk" không.
+1. **Cài đặt:** `git pull`, `corepack pnpm install`, `corepack pnpm typecheck`, `corepack pnpm test` (64 test).
+   Có gói mới: `driver.js`, `deepeval`, `@napi-rs/keyring` (thư viện native, bản dựng sẵn cho Windows), `zod`,
+   `@microsoft/copilot-sdk` (+ `@microsoft/copilot-sdk-win32-x64`, `koffi`). Nếu registry công ty chặn gói nào thì ghi
+   tên gói + mã lỗi và dừng. Test đỏ thì dừng. Xong bước này thì làm **§2a** trước bước 2.
 2. **Mở dashboard thật:** `$env:AGENTHUB_RUNTIME = "copilot"; corepack pnpm dashboard`. Chưa có `agenthub.local.json` thì
    sơ đồ phải giống trước: 4 cổng, 5 agent, giá trị lấy từ `.env`. Ghi: sơ đồ có đúng 4 cổng (nhãn MCP) và 5 agent (nhãn Agent) không.
 3. **Tab Đăng nhập** (0 credit). Ghi trạng thái từng cổng (Đã đăng nhập / Lỗi / Chưa rõ), chỉ tên trạng thái, không chép
@@ -79,6 +82,35 @@ Chưa kiểm với dịch vụ thật: mọi thứ ở §2 dưới đây.
     - `docs/handoff-claude.md` §1.
 
     `git status` chỉ có file trong `docs/`, `PLAN.md`, `evals/results/`. Commit, push.
+
+## 2a. SDK v2 (`@microsoft/copilot-sdk` 2.0.4): làm ngay sau bước 1
+
+Mọi lệnh dưới đây chạy với `$env:AGENTHUB_RUNTIME = "copilot"`. Lỗi kiểu "protocol", "negotiation" hoặc "spawn" ở bất kỳ
+bước nào: chép nguyên dòng lỗi (đã xoá dữ liệu thật), ghi vào work-feedback và dừng §2a.
+
+1. **Cài** (đã chạy ở bước 1). Ghi:
+   - còn cảnh báo `deprecated` nào không (chỉ tên gói);
+   - pnpm báo "Ignored build scripts: … koffi …" là bình thường: koffi chỉ dùng khi chạy runtime trong process, Agent Hub
+     chạy runtime ở process riêng.
+2. **Model chỉ thấy tool trong allowlist** (0 credit, không gửi prompt):
+   `corepack pnpm smoke comms-reader --tools`, rồi lần lượt `board-reader`, `adorepo-reader`, `code-reader`, `cloud-reader`.
+   Ghi cho từng agent:
+   - dòng `auth:`: `isAuthenticated` và `authType`. **Không chép `login`, `host`**;
+   - số tool "model thấy" và dòng cuối: "Tất cả trong allowlist." hay "NGOÀI allowlist: …" (chép tên tool);
+   - mã thoát (`$LASTEXITCODE`, 0 hoặc 1);
+   - board-reader / adorepo-reader: cổng ADO có kết nối không, có mở trình duyệt không (đăng nhập Entra phải đi qua `az`, không hỏi).
+3. **Một session thật** (trần 30 AI Credits): `corepack pnpm smoke` (comms-reader). Ghi:
+   - các dòng `[gate] <tool> → allow|deny`: tên tool có dạng `<server>-<tool>` không (ví dụ `workiq-…`), có `deny` không;
+   - có cặp `[tool.execution_start]` / `[tool.execution_complete]` không, `success` là true hay false;
+   - có `[session.usage_checkpoint]` không; chép `totalNanoAiu` của dòng cuối cùng;
+   - có `[session_limits_exhausted.requested]` không;
+   - `=== reply ===` có nội dung không (chỉ ghi có / không, không chép nội dung).
+4. **Credit:** làm cùng bước 5 của §2 (check việc). Ghi thêm:
+   - có agent nào lỗi về `maxAiCredits` không (trần mỗi agent phải ≥ 30);
+   - nếu người dùng xem được mức dùng Copilot trên GitHub (Settings → Copilot / Billing): số trước và sau lượt chạy, để so
+     với tổng credit trên dashboard. Dashboard đang quy đổi 1 AI Credit = 1e9 nano-AIU, chưa kiểm ở Work.
+5. **Gọi thẳng tool:** làm cùng bước 7 của §2 (`corepack pnpm wit <số>`). Dòng đầu phải là "Đọc thẳng work item…".
+6. **Ghi:** `docs/work-feedback.md`, mục "lần 13 §2a (SDK v2)"; dòng `[Work] Lần 13 §2a` trong `PLAN.md`.
 
 ## 3. Ràng buộc
 
