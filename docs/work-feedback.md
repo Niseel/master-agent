@@ -638,3 +638,90 @@ Mẫu mỗi mục:
 
 ## 2026-11-26 (lần 10) — tổng credit
 - Thấy: chỉ có check việc, 31.11 AI Credits. Không giao việc, không QA.
+
+## 2026-11-28 (lần 11) — cài đặt, test
+- Thấy: base `a649bdd` (= `origin/main`, code ở `8ab1b02`). `corepack pnpm install` ok, `typecheck` exit 0, `test`
+  57/57. `corepack pnpm dashboard` runtime `copilot` chạy thẳng.
+- Đề xuất: không.
+
+## 2026-11-28 (lần 11) — "Check việc"
+- Thấy: 65.2s, **26.53/120** AI Credits, 7 mục, 0 nguồn lỗi, 0 cảnh báo.
+- Thấy: audit (file ngày UTC 2026-11-27): 22 dòng, 21 `allow`, 1 `deny`; không tool ghi nào được gọi.
+
+  | Agent | allow | deny |
+  |---|---|---|
+  | board-reader | 2 | 0 |
+  | cloud-reader | 12 | 0 |
+  | code-reader | 5 | 1 |
+  | comms-reader | 2 | 0 |
+
+- Thấy: code-reader vẫn có 1 `deny` tên đoán, lần này là `github-github-actions_list` (tiền tố server lặp hai lần),
+  tự sửa. Lần 8–11 đều có đúng 1 lần, dù luật tên tool đã vào system prompt.
+- Thấy: board-reader trả **0 mục** (2 lời gọi). Vì vậy báo cáo không có mục Azure DevOps nào, kể cả trong nhóm "Mục
+  khác có agent ghi".
+- Thấy: "Có gì mới" **không kiểm** lần này (người dùng chọn bỏ qua). Chuyển lần 12.
+- Đề xuất: code-reader — ưu tiên thấp (handoff-claude §3 mục 6). board-reader 0 mục — Home xem lại truy vấn mặc định
+  (ví dụ chỉ lấy work item gán cho tôi đang mở), hoặc cho người dùng nhập số work item (mục dưới).
+
+## 2026-11-28 (lần 11) — Việc cần làm: board-writer chưa kiểm được
+- Thấy: tab Việc cần làm có 2 nhóm: "Cần bạn xử lý (4)" và "Mục khác có agent ghi (2)". Nhóm 2 đóng/mở được, giữ trạng
+  thái; tự mở khi chứa mục đã giao (cả sau khi tải lại trang). Không có mục nguồn Azure DevOps nên không có nút
+  "Giao việc: board-writer".
+- Thấy: board-writer chưa kiểm được ở Work vì brief không có mục ADO; đề xuất Home cho nhập số work item để giao việc
+  board-writer.
+- Thay thế: người dùng chọn kiểm **Từ chối** với comms-writer (1 mục Outlook trong nhóm "Mục khác").
+- Mock đang giả định: brief luôn có mục ADO để giao.
+- Đề xuất: handoff-claude §3 mục 1.
+
+## 2026-11-28 (lần 11) — comms-writer: Soạn rồi Từ chối
+- Lượt 1 (lời giao không có người nhận), ~31s:
+  - `workiq-call_function_placeholder` → `deny` ("không có trong allowlist"), rồi `workiq-search_paths` [`query`] → `allow`.
+  - Agent báo không có tool tra người nhận (id chat/người dùng) và dừng, **không có yêu cầu duyệt**.
+  - Mục hiện "Không có gì được gửi." **không kèm lý do**: lời giải thích của agent (thiếu người nhận) chỉ có trong
+    Chi tiết của node, không có trên mục.
+- Lượt 2 (giao lại, lời giao có email của người dùng):
+  - `workiq-create_entity` [`parentUrl`, `jsonBody`] (`parentUrl` dạng `/chats`) → `ask`. Tab Duyệt hiện đủ tham số.
+    Gõ lý do, **Từ chối** → `reject` với `reason` = lý do.
+  - **Agent tự thử lại ngay** `workiq-create_entity` với `jsonBody` rỗng → `ask` lần 2 → Từ chối → `reject`.
+- Thấy kết quả trên UI (đạt yêu cầu "mọi trạng thái, lý do, kết quả xem được trên UI"):
+  - Tab Duyệt "Đã xử lý": 2 dòng Từ chối, có quyết định, giờ, agent → tool, lý do, tham số.
+  - Mục đã giao: "Không có gì được gửi (bạn đã từ chối 2 yêu cầu: <lý do>)." Còn nguyên sau khi đóng form và sau khi
+    tải lại trang.
+  - Node comms-writer: "Xong · Bị từ chối 2 yêu cầu, không gửi gì".
+  - Audit (UTC 2026-11-28): `06:56:24 deny`, `06:56:25 allow`, `07:08:58 ask`, `07:09:28 reject`, `07:09:29 ask`,
+    `07:10:09 reject`. Không có `allow` cho tool ghi. Không bấm Duyệt.
+- Thấy khác:
+  - Thông báo (header) hiện chuỗi JSON thô `{"link":null,"summary":...}` thay vì câu tóm tắt.
+  - Chip `workiq` ở header vẫn xám dù đã gọi tool thành công.
+  - Console lặp lại `requestFailed GET /report net::ERR_ABORTED` (có vẻ vô hại, có thể do iframe/tải lại báo cáo).
+- Credit: ≈2.6 cho cả hai lượt (thanh 26.53 → 29.1).
+- Mock đang giả định: writer luôn biết người nhận, không gọi tên đoán, dừng sau khi bị từ chối.
+- Đề xuất: handoff-claude §3 mục 2, 3.
+
+## 2026-11-28 (lần 11) — nghiệm thu (QA) chạy lại
+- Thấy: lượt `qa-2026-11-28-071046`, ~50s, ≈9.9 AI Credits (thanh 29.1 → 39.0, **thanh credit có cộng QA**). Kết quả
+  "2/3 đạt": tiêu chí 1 Đạt, 2 (link mở tab mới) **Không kiểm được**, 3 (footer) Đạt.
+- Thấy: 18 lời gọi, đều `allow`, **tuần tự**: `start_tracing`, `start_video` [`filename`], `navigate` [`url`], rồi 3 lần
+  (`video_chapter` [`title`,`description`,`duration`], `wait_for` [`time`], `snapshot` [tiêu chí 2, 3 có `target`],
+  `take_screenshot` [`filename`,`scale`]), rồi `stop_video`, `stop_tracing`, `close`. Không chapter nào lỗi.
+- Thấy: chỉ có `qa.webm`, báo cáo nhúng `<video controls preload="metadata" src="qa.webm">`. Không còn `qa-*.webm`.
+  Sửa lần 9 đạt.
+- Thấy: ảnh không dính lớp phủ, nhưng **`ac-1.png`, `ac-2.png`, `ac-3.png` giống hệt nhau** (cùng hash): đều là đầu trang,
+  kể cả tiêu chí footer. `browser_take_screenshot` được gọi không có `ref`/`element`/`fullPage`, nên luôn chụp khung nhìn
+  đầu trang; `snapshot` có `target` nhưng không cuộn trang.
+- Thấy: tiêu chí 2 không kiểm được vì snapshot có `href` nhưng không có thuộc tính `target`; `browser_evaluate` bị chặn
+  (đúng thiết kế).
+- Mock đang giả định: ảnh mỗi tiêu chí khác nhau; snapshot đủ để kiểm link mở tab mới.
+- Đề xuất: handoff-claude §3 mục 5.
+
+## 2026-11-28 (lần 11) — Lấy tiêu chí từ work item thật
+- Thấy: người dùng chọn 1 work item có Acceptance Criteria. "Lấy tiêu chí" trả **11 tiêu chí**, ≈5.3 AI Credits (thanh
+  39.0 → 44.3). Audit đúng 1 dòng: `ac-reader ado-wit_work_item allow [action,id,project]`. Không lỗi.
+- Thấy: "Dùng các tiêu chí này" điền đủ 11 dòng vào form. Không chạy QA với các tiêu chí này.
+- Thấy (người dùng đối chiếu trên ADO): **đủ số lượng nhưng không khớp nguyên văn**, model đã dịch/diễn đạt lại.
+  Một số tiêu chí dài, mô tả hành vi ngoài UI, QA chỉ-UI khó kiểm.
+- Mock đang giả định: model trả nguyên văn.
+- Đề xuất: handoff-claude §3 mục 4.
+
+## 2026-11-28 (lần 11) — tổng credit
+- Thấy: thanh credit **44.3/120**: check việc 26.53 + Soạn ≈2.6 + QA ≈9.9 + Lấy tiêu chí ≈5.3. Mỗi việc dưới trần 30.
