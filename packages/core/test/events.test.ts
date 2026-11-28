@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SessionEvent } from "@github/copilot-sdk";
+import type { SessionEvent } from "@microsoft/copilot-sdk";
 import { mapSdkEvent } from "../src/events.ts";
 
 const ev = (type: string, data: object) => ({ type, data }) as unknown as SessionEvent;

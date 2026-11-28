@@ -43,6 +43,10 @@ event `tool.execution_start` và phần `=== reply ===`.
 - Lỗi kiểu policy/không có quyền Copilot CLI → org chưa bật **Copilot CLI policy**. Ghi lỗi (đã xoá
   tên org) vào step0-results.md, hỏi admin GitHub org.
 - Chưa chọn được model → thêm `AGENTHUB_MODEL=<model org cho phép>` vào `.env`.
+- SDK là `@microsoft/copilot-sdk` 2.x (từ 2026-11-28; `@github/copilot-sdk` đã deprecated). Runtime chạy ở process
+  riêng (`RuntimeConnection.forSpawnedStdio()`). Lỗi kiểu "protocol" / "negotiation" khi khởi động → SDK và runtime
+  lệch phiên bản: chạy lại `corepack pnpm install`, ghi phiên bản trong `node_modules/@microsoft/copilot-sdk/package.json`
+  (`version`, `copilotCliVersion`). Kiểm đủ: handoff-copilot §2a.
 
 ## 3. Từng MCP server
 
@@ -149,6 +153,26 @@ Runtime gọi thẳng `wit_work_item` action `get` (không qua model, thường 
 title, type, state, priority, story point, giờ ước tính / còn lại / đã làm, người được giao, iteration, hạn, tag,
 description, acceptance criteria, link. Dòng đầu in "Đọc thẳng work item…" hoặc "Không đọc thẳng được work item: để
 model đọc" (khi đó model đọc thay, một session, trần 30 AI Credits). Kết quả chỉ in ra terminal: không chép vào repo.
+
+## 5e. Cổng, agent và đăng nhập trên dashboard (Milestone 1)
+
+- Cấu hình nằm ở `agenthub.local.json` (gitignore: có tên org, project, workspace). Chưa có file thì dashboard dùng
+  cấu hình có sẵn + `.env` như trước. Sửa trên dashboard: nút **＋ Thêm cổng / agent**, tab **Cấu hình**. Không commit file này.
+- Tab **Đăng nhập**: mỗi cổng có nút. Microsoft (ADO, Azure) chạy `az login --allow-no-subscriptions`; "Dùng mã thiết bị"
+  thêm `--use-device-code` (mã và link hiện trên UI). GitHub chạy `gh auth login --web`. Work IQ: nút chấp nhận điều khoản
+  (`npx -y @microsoft/workiq accept-eula`), chỉ bấm khi người dùng đồng ý. Đăng xuất = `az logout` / `gh auth logout`.
+- Cổng Microsoft có ô "Hồ sơ đăng nhập riêng": thư mục az tuyệt đối (thay `ADO_AZURE_CONFIG_DIR` cho cổng ADO).
+- Token của cổng tự tạo / import nằm trong Windows Credential Manager (dịch vụ `agent-hub`), file chỉ giữ `${input:<id>}`.
+
+## 5f. Eval (deepeval)
+
+```powershell
+pnpm eval --drafts                 # Task nháp (dữ liệu tự tạo), model = Copilot công ty, judge = Copilot
+pnpm eval                          # chỉ Task Thành đã verify; exit 1 nếu chưa đạt ngưỡng
+```
+
+Agent chạy thật qua Copilot SDK (runtime `byok`, MCP giả đọc dữ liệu của Task), nên tốn AI Credits (mỗi agent một
+session, judge thêm vài lượt). Kết quả (chỉ điểm số) ở `evals/results/<thời gian>.json`. Telemetry của deepeval tắt.
 
 ## 6. Gửi phản hồi về Home
 

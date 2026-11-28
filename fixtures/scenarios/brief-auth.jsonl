@@ -6,7 +6,7 @@
 {"delayMs":100,"event":{"type":"tool.completed","callId":"e1","ok":false,"error":"The WorkIQ End User License Agreement (EULA) has not been accepted. Accept the EULA to enable WorkIQ tools."}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"comms-reader","server":"workiq","tool":"accept_eula","callId":"e2"}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"e2","ok":true}}
-{"event":{"type":"agent.result","agent":"comms-reader","items":[{"source":"outlook","title":"Work IQ chưa chấp nhận EULA","summary":"Không đọc được mail: cần chấp nhận EULA.","priority":"high","actionRequired":true,"suggestedAction":"Chấp nhận EULA","link":null,"timestamp":null}]}}
+{"event":{"type":"agent.result","agent":"comms-reader","items":[{"source":"outlook","ref":"Work IQ chưa chấp nhận EULA","title":"Work IQ chưa chấp nhận EULA","summary":"Không đọc được mail: cần chấp nhận EULA.","detail":"Không đọc được mail: cần chấp nhận EULA.","isTodo":true,"important":true,"urgent":false,"reason":"","priority":null,"dueDate":null,"todos":["Chấp nhận EULA"],"related":[],"phishing":false,"images":[],"link":null,"timestamp":null}]}}
 {"event":{"type":"agent.completed","agent":"comms-reader","durationMs":900}}
 {"delayMs":100,"event":{"type":"tool.started","agent":"board-reader","server":"ado","tool":"wit_query","callId":"e3"}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"e3","ok":false,"error":"VS30063: You are not authorized to access https://dev.azure.com."}}
@@ -20,7 +20,7 @@
 {"delayMs":50,"event":{"type":"tool.completed","callId":"e7","ok":true}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"code-reader","server":"builtin","tool":"github-list","callId":"e8"}}
 {"delayMs":50,"event":{"type":"tool.completed","callId":"e8","ok":true}}
-{"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway.","priority":"medium","actionRequired":true,"suggestedAction":"Review PR #87","link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:30:00Z"}]}}
+{"event":{"type":"agent.result","agent":"code-reader","items":[{"source":"github","ref":"87","title":"PR #87 chờ bạn review","summary":"fix(orders): retry payment gateway.","detail":"fix(orders): retry payment gateway.","isTodo":true,"important":false,"urgent":false,"reason":"","priority":null,"dueDate":null,"todos":["Review PR #87"],"related":[],"phishing":false,"images":[],"link":"https://github.com/me/orders/pull/87","timestamp":"2026-11-23T07:30:00Z"}]}}
 {"event":{"type":"agent.completed","agent":"code-reader","durationMs":1200}}
 {"delayMs":50,"event":{"type":"tool.started","agent":"cloud-reader","server":"azure","tool":"monitor","callId":"e6"}}
 {"delayMs":100,"event":{"type":"tool.completed","callId":"e6","ok":false,"error":"MCP server 'azure': {\"status\":401,\"message\":\"Azure credentials not found or unavailable. Please run 'az login' to authenticate, then try again. For the complete list of supported credentials, see: https://aka.ms/azmcp/auth.\"}"}}

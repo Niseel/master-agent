@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@github/copilot-sdk";
+import type { SessionEvent } from "@microsoft/copilot-sdk";
 import type { BriefItem } from "./brief.ts";
 import type { WorkItem } from "./wit.ts";
 

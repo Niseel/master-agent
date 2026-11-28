@@ -6,10 +6,9 @@
  *   AGENTHUB_RUNTIME=copilot pnpm smoke code-reader --tools   # only list the tools the model sees, no prompt, no credits
  * Uses the real approval gate (no approveAll). Copy only event TYPES/shapes to docs, never data.
  */
-import { CopilotClient } from "@github/copilot-sdk";
 import { readerAgents } from "../packages/core/src/agents.ts";
 import { loadConfig } from "../packages/core/src/config.ts";
-import { MIN_SESSION_CREDITS, mcpAuth, sessionTools, waitForMcp } from "../packages/core/src/runtime/sdk.ts";
+import { MIN_SESSION_CREDITS, byokOptions, mcpAuth, newClient, sessionTools, waitForMcp } from "../packages/core/src/runtime/sdk.ts";
 import { decide } from "../packages/core/src/security.ts";
 
 try {
@@ -23,35 +22,35 @@ const agent = readerAgents(cfg).find((a) => a.name === name);
 if (!agent) throw new Error(`Không có agent ${name}`);
 if (agent.missingConfig) throw new Error(agent.missingConfig);
 
-const client = new CopilotClient();
+const client = newClient();
 await client.start();
 console.log("auth:", JSON.stringify(await client.getAuthStatus()));
 
 const session = await client.createSession({
   model: cfg.model ?? undefined,
-  provider:
-    cfg.runtime === "byok" && cfg.byok.apiKey
-      ? { type: "anthropic", baseUrl: cfg.byok.baseUrl, apiKey: cfg.byok.apiKey }
-      : undefined,
+  ...byokOptions(cfg),
   systemMessage: { mode: "append", content: agent.prompt },
-  mcpServers: agent.mcpServers,
-  availableTools: sessionTools(agent),
-  includedBuiltinAgents: [],
-  skipCustomInstructions: true,
-  sessionLimits: { maxAiCredits: MIN_SESSION_CREDITS },
+  mcp: { servers: agent.mcpServers, onAuthRequest: mcpAuth },
+  tools: { availableTools: sessionTools(agent) },
+  agents: { includedBuiltinAgents: [] },
+  instructions: { skipCustomInstructions: true },
+  execution: { limits: { maxAiCredits: MIN_SESSION_CREDITS } },
   hooks: {
-    onPreToolUse: ({ toolName }) => {
-      const { decision, reason } = decide(agent, toolName);
-      console.log(`[gate] ${toolName} → ${decision} (${reason})`);
-      return { permissionDecision: decision, permissionDecisionReason: reason };
+    handlers: {
+      onPreToolUse: ({ toolName }) => {
+        const { decision, reason } = decide(agent, toolName);
+        console.log(`[gate] ${toolName} → ${decision} (${reason})`);
+        return { permissionDecision: decision, permissionDecisionReason: reason };
+      },
     },
   },
-  onPermissionRequest: (req) => {
-    if (req.kind !== "mcp") return { kind: "reject", feedback: "chỉ MCP" };
-    const { decision, reason } = decide(agent, `${req.serverName}-${req.toolName}`);
-    return decision === "allow" ? { kind: "approve-once" } : { kind: "reject", feedback: reason };
+  permissions: {
+    onRequest: (req) => {
+      if (req.kind !== "mcp") return { kind: "reject", feedback: "chỉ MCP" };
+      const { decision, reason } = decide(agent, `${req.serverName}-${req.toolName}`);
+      return decision === "allow" ? { kind: "approve-once" } : { kind: "reject", feedback: reason };
+    },
   },
-  onMcpAuthRequest: mcpAuth,
 });
 
 session.on((ev) => {

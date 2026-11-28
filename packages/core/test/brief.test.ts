@@ -4,13 +4,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { readerAgents } from "../src/agents.ts";
-import { AgentResult } from "../src/brief.ts";
+import { AgentResult, type BriefItem } from "../src/brief.ts";
+import { item } from "./helpers.ts";
+import { mergeCards } from "../src/cards.ts";
 import { loadConfig } from "../src/config.ts";
 import type { HubEvent } from "../src/events.ts";
 import { hint, isBlocking, renderReport, saveReport, summarize } from "../src/report.ts";
 import { MockRuntime } from "../src/runtime/mock.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
+
 
 test("BriefItem schema rejects bad items", () => {
   assert.equal(AgentResult.safeParse({ items: [{ source: "azure", title: "x", priority: "urgent" }] }).success, false);
@@ -38,9 +41,9 @@ test("mock e2e: write tools from readers are denied (no approval queue), results
   const writeDone = ev.find((e) => e.type === "tool.completed" && e.callId === write.callId) as { ok: boolean; error?: string };
   assert.match(writeDone.error!, /^Denied by preToolUse hook: Tool github-add_issue_comment /, "a write never waits for a user");
   const items = ev.flatMap((e) => (e.type === "agent.result" ? e.items : []));
-  assert.equal(items.length, 10, "the empty item from the fixture is dropped");
+  assert.equal(items.length, 12, "the empty item from the fixture is dropped");
   assert.ok(ev.some((e) => e.type === "message" && e.text.startsWith("Bỏ 1 mục rỗng")));
-  assert.ok(items.some((i) => i.title.startsWith("[Nghi lừa đảo]")));
+  assert.ok(items.some((i) => i.phishing && /token/.test(i.title)));
 });
 
 test("mock e2e: failures don't break the run; bad schema becomes agent.failed", async () => {
@@ -59,15 +62,19 @@ test("report: action items first, links only http(s), HTML escaped", () => {
     maxAiCredits: 5,
     durationMs: 1000,
     failures: { "board-reader": "<b>auth</b>" },
-    items: [
-      { source: "teams", title: "<script>x</script>", summary: "s", priority: "high", actionRequired: true, suggestedAction: null, link: "javascript:alert(1)", timestamp: null },
-      { source: "github", title: "PR", summary: "s", priority: "low", actionRequired: false, suggestedAction: null, link: "https://github.com/x", timestamp: null },
-    ],
+    items: [],
+    cards: mergeCards([
+      item({ source: "teams", ref: "t1", title: "<script>x</script>", isTodo: true, important: true, urgent: true, link: "javascript:alert(1)", todos: ["<i>bước</i>"] }),
+      item({ source: "github", ref: "r#1", title: "PR", link: "https://github.com/x" }),
+      item({ source: "outlook", ref: "m9", title: "Gửi token", phishing: true }),
+    ]),
   });
   assert.ok(!html.includes("<script>x"));
+  assert.ok(!html.includes("<i>bước"));
   assert.ok(!html.includes("javascript:"));
   assert.ok(html.includes("&lt;b&gt;auth"));
-  assert.ok(html.indexOf("Cần bạn xử lý") < html.indexOf("<h2>GitHub"));
+  assert.ok(html.indexOf("Nghi lừa đảo") < html.indexOf("<h2>Làm ngay"), "phishing on top");
+  assert.ok(html.indexOf("<h2>Làm ngay") < html.indexOf("<h2>Mục khác"), "to-dos before the rest");
 });
 
 test("scenario files are valid JSONL", () => {
@@ -94,6 +101,7 @@ test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are re
     failures: { "comms-reader": `Tool lỗi: ${errors[0]}`, "board-reader": `Tool lỗi: ${errors[1]}` },
     blocked,
     items: [],
+    cards: [],
   });
   assert.ok(html.includes("npx -y @microsoft/workiq accept-eula"));
   assert.ok(html.includes("ADO_AZURE_CONFIG_DIR"));
@@ -102,7 +110,7 @@ test("mock e2e: EULA / VS30063 tool errors and built-in github-mcp-server are re
 
 test("summarize: retried model errors are not failures; blocking errors drop the agent's items", async () => {
   const ok = summarize(await run("brief-ok"));
-  assert.equal(ok.items.length, 10);
+  assert.equal(ok.items.length, 12);
   assert.deepEqual(ok.failures, {}, "unknown arguments / WIQL / SYN0002 errors were retried");
   // One Azure workspace unreadable (403): a warning, cloud-reader items from the other workspace stay.
   assert.equal(ok.warnings?.length, 1);
@@ -166,19 +174,18 @@ test("có gì mới: items not in the last earlier brief (same runtime) are mark
   const before = process.env.AGENTHUB_REPORT_DIR;
   process.env.AGENTHUB_REPORT_DIR = dir;
   const cfg = { root, runtime: "mock" as const, maxAiCredits: 120 };
-  const item = (title: string, link: string | null = null) =>
-    ({ source: "ado", title, summary: "s", priority: "medium", actionRequired: false, suggestedAction: null, link, timestamp: null }) as const;
-  const result = (items: ReturnType<typeof item>[]): HubEvent[] => [{ type: "agent.result", agent: "board-reader", items: [...items] }];
+  const wi = (ref: string, title = ref) => item({ source: "ado", ref, title, isTodo: true });
+  const result = (items: BriefItem[]): HubEvent[] => [{ type: "agent.result", agent: "board-reader", items }];
   try {
-    const day1 = saveReport(cfg, result([item("A", "https://x/1"), item("B")]), 1, new Date("2026-11-25T08:00:00Z"));
+    const day1 = saveReport(cfg, result([wi("1", "A"), wi("2", "B")]), 1, new Date("2026-11-25T08:00:00Z"));
     assert.equal(day1.report.previousDate, undefined);
     assert.ok(existsSync(path.join(dir, "brief-2026-11-25-mock.json")));
     saveReport({ ...cfg, runtime: "byok" }, result([]), 1, new Date("2026-11-26T08:00:00Z")); // other runtime: ignored
-    // Same link, new title = same item; same day rerun compares with the day before, not with itself.
+    // Same ref, new title = same item; same day rerun compares with the day before, not with itself.
     for (let k = 0; k < 2; k++) {
-      const day2 = saveReport(cfg, result([item("A (sửa)", "https://x/1"), item("B"), item("C")]), 1, new Date("2026-11-27T08:00:00Z"));
+      const day2 = saveReport(cfg, result([wi("1", "A (sửa)"), wi("2", "B"), wi("3", "C")]), 1, new Date("2026-11-27T08:00:00Z"));
       assert.equal(day2.report.previousDate, "2026-11-25");
-      assert.deepEqual(day2.report.isNew, [false, false, true]);
+      assert.deepEqual(day2.report.newKeys, ["ado:3"]);
       assert.match(readFileSync(day2.file, "utf8"), /1 mới so với 2026-11-25[\s\S]*<span class="badge new">Mới<\/span>/);
     }
     // A stopped run (Dừng) must not replace the day's memory with partial items.

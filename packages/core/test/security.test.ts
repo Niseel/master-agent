@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { adoConfigDirProblem, readerAgents, type AgentSpec } from "../src/agents.ts";
 import { loadConfig, normalizeRepo } from "../src/config.ts";
-import { mcpAuth, sessionTools, waitForMcp } from "../src/runtime/sdk.ts";
+import { byokOptions, mcpAuth, sessionTools, waitForMcp } from "../src/runtime/sdk.ts";
 import { audit, decide, denyHint, looksLikeWrite, redact } from "../src/security.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -12,6 +12,8 @@ const root = path.resolve(import.meta.dirname, "../../..");
 const reader: AgentSpec = {
   name: "comms-reader",
   displayName: "x",
+  description: "",
+  todoRule: "",
   prompt: "",
   task: "",
   mcpServers: { workiq: { command: "x" } },
@@ -161,6 +163,16 @@ test("sessionTools: the model sees only allowlisted MCP tools, never the built-i
     // ToolSet.addMcp() accepts only these characters.
     for (const t of tools) assert.match(t, /^mcp:[a-zA-Z0-9_-]+$/);
   }
+});
+
+test("byokOptions: Anthropic key routes every model call to one default provider, CAPI off; otherwise nothing", async () => {
+  const cfg = await loadConfig();
+  assert.deepEqual(byokOptions({ ...cfg, runtime: "copilot", byok: { baseUrl: "u", apiKey: "k" } }), {});
+  assert.deepEqual(byokOptions({ ...cfg, runtime: "byok", byok: { baseUrl: "u", apiKey: "" } }), {});
+  assert.deepEqual(byokOptions({ ...cfg, runtime: "byok", byok: { baseUrl: "u", apiKey: "k" } }), {
+    inference: { providers: [{ name: "anthropic", type: "anthropic", baseUrl: "u", apiKey: "k" }], defaultProvider: "anthropic" },
+    github: { capi: { enabled: false } },
+  });
 });
 
 test("code-reader task names workflow runs via actions_list, a tool it may call", async () => {

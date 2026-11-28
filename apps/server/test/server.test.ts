@@ -64,7 +64,8 @@ test("server: run over HTTP, events stream over SSE, a write tool is denied, rep
     assert.ok(hubEvents.some((e) => e.type === "agent.result"));
     const end = seen.at(-1)!.data;
     assert.equal(end.status, "done");
-    assert.equal(end.report.items.length, 10);
+    assert.equal(end.report.items.length, 12);
+    assert.equal(end.report.cards.length, 9);
     assert.ok(existsSync(end.report.file) && !end.report.file.startsWith(path.join(root, "reports")), "tests write reports to a temp dir");
 
     const state = await (await fetch(`${base}/api/state`)).json();
@@ -161,5 +162,85 @@ test("checkAuth: missing CLI and missing config are clear errors, never a token"
   } finally {
     process.env.PATH = savedPath;
     process.env.AGENTHUB_RUNTIME = "mock";
+  }
+});
+
+test("server: run options are checked; card marks persist; the to-do list exports as Markdown", async () => {
+  const { hub, server, post, base } = await start("brief-ok");
+  try {
+    assert.equal((await post("/api/run", { window: "1y" })).status, 400);
+    assert.equal((await post("/api/run", { agents: [] })).status, 400, "at least one agent");
+    assert.equal((await post("/api/run", { budget: -1 })).status, 400);
+    assert.equal((await fetch(`${base}/api/export.md`)).status, 404, "no report yet");
+
+    const { done } = await hub.start("check việc", { window: "3d", agents: ["board-reader", "comms-reader"] });
+    await done;
+    assert.ok(!hub.events.some((e) => "agent" in e && e.agent === "code-reader"), "only the chosen agents run");
+    const card = hub.report!.report.cards.find((c) => c.key === "ado:1234")!;
+    assert.deepEqual(card.items.map((i) => i.source), ["ado", "teams"], "merged across the two agents");
+
+    assert.equal((await post("/api/cards", { key: card.key, status: "later" })).status, 400);
+    assert.equal((await post("/api/cards", { key: card.key, todos: [{ text: "x" }] })).status, 400);
+    assert.equal((await post("/api/cards", { key: card.key, status: "done" })).status, 200);
+    const steps = [{ text: "Tự viết", done: false, struck: false }, { text: "Bỏ", done: false, struck: true }];
+    assert.equal((await post("/api/cards", { key: card.key, todos: steps })).status, 200);
+    assert.equal(hub.cardStates[card.key].status, "done", "editing todos keeps the mark");
+    assert.equal(hub.cardStates[card.key].seen, card.updatedAt);
+    assert.deepEqual(new Hub(hub.cfg).cardStates[card.key].todos, steps, "saved to disk");
+
+    const md = await (await fetch(`${base}/api/export.md`)).text();
+    assert.match(md, /- \[x\] \*\*\[#1234[\s\S]*- \[ \] ~~Bỏ~~/);
+  } finally {
+    server.close();
+  }
+});
+
+test("server: gates and agents from the dashboard; mcp.json import keeps secrets out of the file; tools of a mock gate", async () => {
+  const { hub, server, post, base } = await start("brief-ok");
+  const store = new Map<string, string>();
+  const secretHub = new Hub(hub.cfg, { get: (id) => store.get(id) ?? null, set: (id, v) => void store.set(id, v), delete: (id) => store.delete(id) });
+  try {
+    const put = (file: unknown) => fetch(`${base}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ file }) });
+    assert.equal((await put({ servers: { "Bad-Key": {} }, agents: {} })).status, 400);
+    const file = structuredClone(hub.file);
+    file.servers.ado.tools = ["wit_work_item", "wit_query"];
+    file.agents["board-reader"].todoRule = "chỉ bug";
+    delete file.agents["cloud-reader"];
+    assert.equal((await put(file)).status, 200);
+    assert.deepEqual(hub.agents.find((a) => a.name === "board-reader")?.readTools, ["ado-wit_work_item", "ado-wit_query"]);
+    assert.ok(!hub.agents.some((a) => a.name === "cloud-reader"), "removed from the canvas");
+    assert.equal(new Hub(hub.cfg).file.agents["board-reader"].todoRule, "chỉ bug", "saved to agenthub.local.json");
+
+    const imported = await post("/api/import", { text: '{"servers":{"notes":{"type":"http","url":"https://n.example/mcp","headers":{"Authorization":"Bearer t0k3n"}}}}' });
+    assert.deepEqual(await imported.json(), { added: ["notes"], secrets: ["notes_authorization"], skipped: [] });
+    assert.ok(!JSON.stringify(hub.file).includes("t0k3n"), "the token is not kept");
+    assert.equal((await post("/api/import", { text: "{oops" })).status, 400);
+
+    const tools = (await (await post("/api/tools", { key: "ado" })).json()) as { tools: { name: string; write: boolean }[] };
+    assert.ok(tools.tools.some((t) => t.name === "wit_work_item" && !t.write));
+    assert.ok(tools.tools.some((t) => t.name === "repo_pull_request"));
+    assert.equal((await post("/api/tools", { key: "notes" })).status, 400, "mock runtime never contacts a real server; missing secret first");
+
+    // Secrets: only declared password inputs; the value never comes back in the state.
+    secretHub.file = hub.file;
+    assert.throws(() => secretHub.setSecret("other", "x"), /Không có ô bí mật/);
+    secretHub.setSecret("notes_authorization", "abc");
+    assert.equal(store.get("notes_authorization"), "abc");
+    const state = JSON.stringify(secretHub.state());
+    assert.ok(!state.includes('"abc"') && state.includes('"notes_authorization":true'));
+  } finally {
+    server.close();
+  }
+});
+
+test("server: sign-in never runs a real CLI in the mock runtime", async () => {
+  const { server, post } = await start("brief-ok");
+  try {
+    const r = await post("/api/login", { key: "ado" });
+    assert.equal(r.status, 400);
+    assert.match(((await r.json()) as { error: string }).error, /Runtime mock/);
+    assert.equal((await post("/api/logout", { key: "github" })).status, 400);
+  } finally {
+    server.close();
   }
 });

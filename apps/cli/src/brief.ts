@@ -3,7 +3,8 @@
  * Runs the 4 reader agents in parallel, writes reports/brief-YYYY-MM-DD.html.
  * Read-only: the gate denies every write tool.
  */
-import { readerAgents } from "@agenthub/core/agents";
+import { buildAgents, loadHubFile } from "@agenthub/core/hub-config";
+import { resolveInputs } from "@agenthub/core/secrets";
 import { loadConfig } from "@agenthub/core/config";
 import type { HubEvent } from "@agenthub/core/events";
 import { isBlocking, saveReport } from "@agenthub/core/report";
@@ -15,7 +16,12 @@ try {
 } catch {} // .env is optional
 
 const cfg = await loadConfig();
-const agents = readerAgents(cfg);
+const hubFile = loadHubFile(cfg);
+// Gates and agents from agenthub.local.json (or the built-in setup); `${input:…}` filled from the keychain.
+const agents = buildAgents(cfg, hubFile).map((a) => {
+  const { value, missing } = resolveInputs(a.mcpServers, hubFile);
+  return { ...a, mcpServers: value, missingConfig: [a.missingConfig, missing.length ? `Thiếu giá trị ${missing.join(", ")}` : ""].filter(Boolean).join("; ") || undefined };
+});
 const runtime = await createRuntime(cfg);
 const t0 = Date.now();
 const events: HubEvent[] = [];
@@ -26,7 +32,7 @@ console.log(`▶ check việc — runtime=${cfg.runtime}, budget=${cfg.maxAiCred
 process.on("SIGINT", () => void runtime.stop().then(() => process.exit(130)));
 
 // Console progress only; the report is built from `events` by summarize().
-for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || "check việc", agents, budget: cfg.maxAiCredits })) {
+for await (const ev of runtime.run({ prompt: process.argv.slice(2).join(" ") || "check việc", agents, budget: cfg.maxAiCredits, window: "24h" })) {
   events.push(ev);
   switch (ev.type) {
     case "agent.started":

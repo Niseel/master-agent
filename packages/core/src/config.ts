@@ -10,7 +10,7 @@ export interface HubConfig {
   root: string;
   /** Default model. null = let Copilot pick. */
   model: string | null;
-  /** Credit budget for one brief, split evenly across agents (sessionLimits.maxAiCredits). */
+  /** Credit budget for one brief, split evenly across agents (SDK `execution.limits.maxAiCredits`). */
   maxAiCredits: number;
   /** Per-agent timeout. */
   timeoutMs: number;
@@ -37,7 +37,7 @@ export async function loadConfig(root = findRoot()): Promise<HubConfig> {
     runtime,
     root,
     model: env.AGENTHUB_MODEL ?? user.model ?? null,
-    maxAiCredits: Number(env.AGENTHUB_MAX_AI_CREDITS ?? user.maxAiCredits ?? 120),
+    maxAiCredits: Number(env.AGENTHUB_MAX_AI_CREDITS ?? user.maxAiCredits ?? 150),
     timeoutMs: Number(env.AGENTHUB_TIMEOUT_MS ?? user.timeoutMs ?? 150_000),
     scenario: env.AGENTHUB_SCENARIO ?? user.scenario ?? "brief-ok",
     ado: {

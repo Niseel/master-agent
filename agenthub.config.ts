@@ -7,9 +7,9 @@ export default {
   runtime: "mock",
   // null = Copilot picks. At Work, set a model the org allows (see docs/step0-results.md).
   model: null,
-  // AI Credit budget for one brief, split evenly across the agents.
-  // The runtime needs at least 30 per session, so 4 agents => at least 120.
-  maxAiCredits: 120,
+  // AI Credit cap for one brief, split evenly across the agents that run. It is a cap, not the spend
+  // (Work runs: ~35 for 4 agents). The runtime needs at least 30 per session, so 5 agents => at least 150.
+  maxAiCredits: 150,
   timeoutMs: 150_000,
   ado: { org: "", project: "" },
   github: { repos: [] },

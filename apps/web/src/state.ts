@@ -2,12 +2,16 @@
  * Run events -> what the dashboard shows (node states, tool calls, credits). Pure, so node:test covers it.
  */
 import type { BriefItem } from "@agenthub/core/brief";
+import type { Card, CardStates } from "@agenthub/core/cards";
+import type { Gate, GateKind, HubFile } from "@agenthub/core/hub-config";
 import type { HubEvent } from "@agenthub/core/events";
 import { DENIED_PREFIX, findHint, hint } from "@agenthub/core/hints";
 
 export interface AgentInfo {
   name: string;
   displayName: string;
+  description?: string;
+  todoRule?: string;
   servers: string[];
   missingConfig: string | null;
 }
@@ -16,14 +20,16 @@ export type RunStatus = "idle" | "running" | "done" | "stopped";
 export interface ReportSummary {
   file: string;
   items: BriefItem[];
+  cards: Card[];
+  date: string;
   failures: Record<string, string>;
   warnings?: string[];
   blocked?: string[];
   usedAiCredits: number;
   durationMs: number;
   previousDate?: string | null;
-  /** Same order as items: not in the previous day's brief. */
-  isNew?: boolean[];
+  /** Keys of cards with no item in the previous day's brief. */
+  newKeys?: string[];
 }
 export interface Snapshot {
   runtime: string;
@@ -33,6 +39,78 @@ export interface Snapshot {
   prompt: string;
   events: Timed[];
   report: ReportSummary | null;
+  /** The user's marks on cards (done / hidden, edited todos). */
+  cardStates: CardStates;
+  minSessionCredits: number;
+  windows: Record<string, string>;
+  config: ConfigView;
+}
+
+export interface AgentKind {
+  preset: string;
+  displayName: string;
+  description: string;
+  todoRule: string;
+  /** Gate kinds it reads through. */
+  needs: string[];
+}
+export interface ConfigView {
+  file: HubFile;
+  /** agenthub.local.json did not parse; the built-in setup runs. */
+  error: string | null;
+  gateKinds: GateKind[];
+  agentKinds: AgentKind[];
+  /** Password inputs: whether the keychain has a value. */
+  secrets: Record<string, boolean>;
+}
+
+/** A catalog item, dragged onto the graph or added with its button. */
+export type CatalogItem =
+  | { kind: "gate"; preset: string }
+  | { kind: "gate"; catalog: string }
+  | { kind: "gate"; custom: "stdio" | "http" }
+  | { kind: "agent"; preset: string }
+  | { kind: "agent"; custom: true };
+
+const freeKey = (taken: object, base: string, sep: string) => {
+  if (!(base in taken)) return base;
+  for (let i = 2; ; i++) if (!(`${base}${sep}${i}` in taken)) return `${base}${sep}${i}`;
+};
+
+/**
+ * Add a catalog item to the config. A new preset agent is wired to the first gate of each kind it needs; a new gate
+ * from the catalog of imported servers leaves the catalog. Returns the new config and what to select.
+ */
+export function addToConfig(file: HubFile, item: CatalogItem, agentKinds: AgentKind[]): { file: HubFile; select: { kind: "agent" | "server"; name: string } } {
+  const next: HubFile = structuredClone(file);
+  if (item.kind === "gate") {
+    let gate: Gate;
+    let base: string;
+    if ("preset" in item) {
+      gate = { preset: item.preset as Gate["preset"] };
+      base = item.preset;
+    } else if ("catalog" in item) {
+      gate = next.catalog[item.catalog];
+      base = item.catalog;
+      delete next.catalog[item.catalog];
+    } else {
+      gate = item.custom === "http" ? { type: "http", url: "", label: "Cổng HTTP mới" } : { type: "stdio", command: "", args: [], label: "Cổng mới" };
+      base = "custom";
+    }
+    const key = freeKey(next.servers, base, "");
+    next.servers[key] = gate;
+    return { file: next, select: { kind: "server", name: key } };
+  }
+  if ("preset" in item) {
+    const kind = agentKinds.find((k) => k.preset === item.preset);
+    const name = freeKey(next.agents, item.preset, "-");
+    const servers = (kind?.needs ?? []).flatMap((need) => Object.entries(next.servers).find(([, g]) => g.preset === need)?.[0] ?? []);
+    next.agents[name] = { preset: item.preset, servers, ...(name !== item.preset ? { displayName: `${kind?.displayName ?? name} (${name})` } : {}) };
+    return { file: next, select: { kind: "agent", name } };
+  }
+  const name = freeKey(next.agents, "agent-moi", "-");
+  next.agents[name] = { displayName: "Agent mới", servers: [], role: "", task: "", todoRule: "" };
+  return { file: next, select: { kind: "agent", name } };
 }
 
 /** needs-action: a known blocking cause (login, EULA, config) the user must fix. warning: a tool error, agent went on. */

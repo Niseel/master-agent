@@ -1,4 +1,4 @@
-import type { AgentSpec } from "../agents.ts";
+import type { AgentSpec, Window } from "../agents.ts";
 import type { HubConfig } from "../config.ts";
 import type { HubEvent } from "../events.ts";
 
@@ -7,6 +7,10 @@ export interface RunInput {
   agents: AgentSpec[];
   /** Total AI Credit budget for this run. */
   budget: number;
+  /** Time window of the sources to read (check việc). */
+  window?: Window;
+  /** End of the window (ISO); the eval pins it to the Task's time. Default: now. */
+  now?: string;
   /** Mock runtime only: scenario to replay instead of cfg.scenario (wit-reader uses `wit-reader`). */
   scenario?: string;
 }

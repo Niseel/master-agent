@@ -7,10 +7,9 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { CopilotClient } from "@github/copilot-sdk";
 import { readerAgents } from "../packages/core/src/agents.ts";
 import { loadConfig } from "../packages/core/src/config.ts";
-import { mcpAuth } from "../packages/core/src/runtime/sdk.ts";
+import { mcpAuth, newClient } from "../packages/core/src/runtime/sdk.ts";
 import { looksLikeWrite } from "../packages/core/src/security.ts";
 
 try {
@@ -22,14 +21,13 @@ if (cfg.runtime === "mock") throw new Error("Đặt AGENTHUB_RUNTIME=copilot (ho
 const agents = readerAgents(cfg).filter((a) => !a.missingConfig);
 const servers = Object.assign({}, ...agents.map((a) => a.mcpServers));
 
-const client = new CopilotClient();
+const client = newClient();
 await client.start();
 const session = await client.createSession({
-  mcpServers: servers,
-  availableTools: ["mcp:*"],
-  skipCustomInstructions: true,
-  onPermissionRequest: () => ({ kind: "reject", feedback: "list-tools không gọi tool" }),
-  onMcpAuthRequest: mcpAuth,
+  mcp: { servers, onAuthRequest: mcpAuth },
+  tools: { availableTools: ["mcp:*"] },
+  instructions: { skipCustomInstructions: true },
+  permissions: { onRequest: () => ({ kind: "reject", feedback: "list-tools không gọi tool" }) },
 });
 
 // Wait until no server is still pending (max 90s).
